@@ -120,7 +120,7 @@ function RecipeCard({ recipe, onClick, onFav }) {
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
           <div style={{ fontFamily:"'Playfair Display',serif", fontSize:13, fontWeight:700, color:"#062846", lineHeight:1.3, flex:1, marginRight:6 }}>{recipe.title}</div>
           <span onClick={e => { e.stopPropagation(); onFav(recipe.id); }}
-            style={{ tSize:13, 7, cursor:"pointer", color:recipe.favorite?"#ff492c":"#ccc", flexShrink:0, transition:"color 0.15s" }}>♥</span>
+            style={{ fontSize:17, cursor:"pointer", color:recipe.favorite?"#ff492c":"#ccc", flexShrink:0, transition:"color 0.15s" }}>♥</span>
         </div>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginTop:7 }}>
           <StarRating value={recipe.rating||0} />
