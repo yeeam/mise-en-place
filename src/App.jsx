@@ -33,7 +33,7 @@ function StarRating({ value, onChange }) {
           onMouseLeave={() => onChange && setHover(0)}
           onClick={() => onChange && onChange(n)}
           style={{ cursor:onChange?"pointer":"default", fontSize:20, color:n<=(hover||value)?"#ff492c":"#ddd", transition:"color 0.15s" }}
-        >â</span>
+        >★</span>
       ))}
     </div>
   );
@@ -65,7 +65,7 @@ function RecipeCard({ recipe, onClick, onFav }) {
       onMouseLeave={e => { e.currentTarget.style.transform=""; e.currentTarget.style.boxShadow="0 2px 12px rgba(0,0,0,0.07)"; }}
     >
       <div style={{ height:110, background:"linear-gradient(135deg,#062846 0%,#5938a2 100%)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:38, position:"relative" }}>
-        ð½ï¸
+        🍽️
         {overdue && (
           <div style={{ position:"absolute", top:8, right:8, background:"#ffd200", borderRadius:20, padding:"2px 7px", fontSize:9, fontWeight:800, color:"#062846" }}>
             {daysSince === null ? "NEVER MADE" : `${daysSince}d ago`}
@@ -76,7 +76,7 @@ function RecipeCard({ recipe, onClick, onFav }) {
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
           <div style={{ fontFamily:"'Playfair Display',serif", fontSize:13, fontWeight:700, color:"#062846", lineHeight:1.3, flex:1, marginRight:6 }}>{recipe.title}</div>
           <span onClick={e => { e.stopPropagation(); onFav(recipe.id); }}
-            style={{ fontSize:17, cursor:"pointer", color:recipe.favorite?"#ff492c":"#ccc", flexShrink:0, transition:"color 0.15s" }}>â¥</span>
+            style={{ fontSize:17, cursor:"pointer", color:recipe.favorite?"#ff492c":"#ccc", flexShrink:0, transition:"color 0.15s" }}>♥</span>
         </div>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginTop:7 }}>
           <StarRating value={recipe.rating||0} />
@@ -92,7 +92,7 @@ function RecipeCard({ recipe, onClick, onFav }) {
   );
 }
 
-function Spinner({ label="Workingâ¦" }) {
+function Spinner({ label="Working…" }) {
   return (
     <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:12, padding:"32px 0" }}>
       <div style={{ width:40, height:40, borderRadius:"50%", border:"3px solid #f0f0f0", borderTop:"3px solid #ff492c", animation:"spin 0.8s linear infinite" }}/>
@@ -140,6 +140,10 @@ export default function App() {
 
   const [search, setSearch] = useState("");
   const [filterUser, setFilterUser] = useState("all");
+  const [listView, setListView] = useState(false);
+  const [filterCuisine, setFilterCuisine] = useState("all");
+  const [filterProtein, setFilterProtein] = useState("all");
+  const [fetchingFromUrl, setFetchingFromUrl] = useState(false);
 
   // Show user modal on first load if no name set
   useEffect(() => {
@@ -204,6 +208,28 @@ If you cannot extract, return {"error":"message"}.`,
       setUrl(""); setView(views.HOME);
     } catch(e) { setUrlError(e.message||"Could not extract recipe."); }
     finally { setUrlLoading(false); }
+  }
+
+  async function fetchFromUrlInDetail(urlToFetch) {
+    if (!urlToFetch?.trim()) return;
+    setFetchingFromUrl(true);
+    try {
+      const text = await callClaude(
+        `You are a recipe extractor. Use web search to fetch the URL and return ONLY valid JSON (no markdown):
+{"title":"string","ingredients":["string"],"instructions":["string"],"tags":["string"],"servings":"string","time":"string"}
+If you cannot extract, return {"error":"message"}.`,
+        `Extract the recipe from: ${urlToFetch}`, true
+      );
+      const parsed = parseJSON(text);
+      if (parsed.error) throw new Error(parsed.error);
+      // Update selected recipe with new ingredients & instructions
+      const updated = { ...selected, ingredients: parsed.ingredients || [], instructions: parsed.instructions || [] };
+      setSelected(updated);
+      persist(prev => prev.map(r => r.id === selected.id ? updated : r));
+    } catch(e) {
+      console.error("Could not fetch from URL:", e.message);
+    }
+    finally { setFetchingFromUrl(false); }
   }
 
   async function searchWeb() {
@@ -283,14 +309,29 @@ If you cannot extract, return {"error":"message"}.`,
   }
 
   const allMembers = [...new Set(recipes.map(r => r.addedBy).filter(Boolean))];
-  const filtered = recipes.filter(r =>
-    (filterUser==="all" || r.addedBy===filterUser) &&
-    (r.title?.toLowerCase().includes(search.toLowerCase()) ||
-     r.tags?.some(t => t.toLowerCase().includes(search.toLowerCase())))
-  );
-  const favs = recipes.filter(r => r.favorite);
+  const allCuisines = [...new Set(recipes.map(r => r.cuisine).filter(Boolean))].sort();
 
-  // Cook log â all entries sorted newest first
+  // Extract proteins from tags (common: Chicken, Beef, Pork, Seafood, Vegetarian)
+  const proteinKeywords = ["Chicken", "Beef", "Pork", "Seafood", "Vegetarian", "Fish", "Lamb", "Turkey", "Tofu"];
+  const allProteins = [...new Set(
+    recipes.flatMap(r => r.tags?.filter(t => proteinKeywords.some(p => t.includes(p))) || [])
+  )].sort();
+
+  const applyAllFilters = (recipeList) => {
+    return recipeList.filter(r => {
+      const matchCuisine = filterCuisine === "all" || r.cuisine === filterCuisine;
+      const matchProtein = filterProtein === "all" || r.tags?.some(t => proteinKeywords.some(p => t === p || t.includes(p)));
+      const matchUser = filterUser === "all" || r.addedBy === filterUser;
+      const matchSearch = r.title?.toLowerCase().includes(search.toLowerCase()) ||
+                         r.tags?.some(t => t.toLowerCase().includes(search.toLowerCase()));
+      return matchCuisine && matchProtein && matchUser && matchSearch;
+    });
+  };
+
+  const filtered = applyAllFilters(recipes);
+  const favs = applyAllFilters(recipes.filter(r => r.favorite));
+
+  // Cook log — all entries sorted newest first
   const cookEntries = recipes
     .flatMap(r => (r.cookLog||[]).map(date => ({ recipe:r, date })))
     .sort((a,b) => new Date(b.date) - new Date(a.date));
@@ -346,7 +387,7 @@ If you cannot extract, return {"error":"message"}.`,
             mise <span style={{color:"#ff492c"}}>en place</span>
           </div>
           <nav style={{ display:"flex", gap:1, alignItems:"center" }}>
-            {[{label:"Recipes",v:views.HOME},{label:"Favs",v:views.FAVORITES},{label:"+ Add",v:views.ADD},{label:"â¦ Suggest",v:views.SUGGEST},{label:"ð Log",v:views.LOG}].map(n => (
+            {[{label:"Recipes",v:views.HOME},{label:"Favs",v:views.FAVORITES},{label:"+ Add",v:views.ADD},{label:"✦ Suggest",v:views.SUGGEST},{label:"📋 Log",v:views.LOG}].map(n => (
               <button key={n.v} onClick={() => setView(n.v)} style={navBtn(view===n.v)}>{n.label}</button>
             ))}
             {currentUser && (
@@ -361,15 +402,20 @@ If you cannot extract, return {"error":"message"}.`,
 
       <div style={{ maxWidth:720, margin:"0 auto", padding:"22px 16px" }}>
 
-        {/* ââ HOME ââ */}
+        {/* ── HOME ── */}
         {view===views.HOME && (
           <div>
-            <div style={{ display:"flex", gap:8, marginBottom:16 }}>
-              <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search recipes or tagsâ¦"
+            <div style={{ display:"flex", gap:8, marginBottom:16, alignItems:"center" }}>
+              <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search recipes or tags…"
                 style={{ flex:1, padding:"10px 14px", borderRadius:12, border:"1.5px solid #e5e5e5", fontSize:13, background:"#fff", outline:"none" }} />
+              <button onClick={() => setListView(!listView)}
+                style={{ padding:"10px 12px", borderRadius:10, border:"1.5px solid #e5e5e5", background:listView?"#062846":"#fff", color:listView?"#fff":"#888", cursor:"pointer", fontSize:14, fontFamily:"'DM Sans',sans-serif", fontWeight:600 }}
+                title={listView ? "Grid view" : "List view"}>
+                {listView ? "≡" : "▦"}
+              </button>
             </div>
             {/* Member filter */}
-            <div style={{ display:"flex", gap:6, marginBottom:18, flexWrap:"wrap" }}>
+            <div style={{ display:"flex", gap:6, marginBottom:12, flexWrap:"wrap" }}>
               {["all", ...allMembers].map(m => (
                 <button key={m} onClick={() => setFilterUser(m)}
                   style={{ padding:"5px 12px", borderRadius:20, border:"none", cursor:"pointer", fontFamily:"'DM Sans',sans-serif", fontWeight:600, fontSize:11,
@@ -379,11 +425,60 @@ If you cannot extract, return {"error":"message"}.`,
                 </button>
               ))}
             </div>
+            {/* Cuisine filter */}
+            <div style={{ display:"flex", gap:6, marginBottom:12, flexWrap:"wrap", alignItems:"center" }}>
+              <span style={{ fontSize:11, fontWeight:600, color:"#888", minWidth:60 }}>Cuisine:</span>
+              {["all", ...allCuisines].map(c => (
+                <button key={c} onClick={() => setFilterCuisine(c)}
+                  style={{ padding:"5px 12px", borderRadius:20, border:"none", cursor:"pointer", fontFamily:"'DM Sans',sans-serif", fontWeight:600, fontSize:11,
+                    background:filterCuisine===c?"#5938a2":"#f0f0f0",
+                    color:filterCuisine===c?"#fff":"#888", transition:"all 0.15s" }}>
+                  {c==="all" ? "All" : c}
+                </button>
+              ))}
+            </div>
+            {/* Protein filter */}
+            <div style={{ display:"flex", gap:6, marginBottom:18, flexWrap:"wrap", alignItems:"center" }}>
+              <span style={{ fontSize:11, fontWeight:600, color:"#888", minWidth:60 }}>Protein:</span>
+              {["all", ...allProteins].map(p => (
+                <button key={p} onClick={() => setFilterProtein(p)}
+                  style={{ padding:"5px 12px", borderRadius:20, border:"none", cursor:"pointer", fontFamily:"'DM Sans',sans-serif", fontWeight:600, fontSize:11,
+                    background:filterProtein===p?"#23cca2":"#f0f0f0",
+                    color:filterProtein===p?"#fff":"#888", transition:"all 0.15s" }}>
+                  {p==="all" ? "All" : p}
+                </button>
+              ))}
+            </div>
             {filtered.length===0 ? (
               <div style={{ textAlign:"center", padding:"60px 0", color:"#aaa" }}>
-                <div style={{ fontSize:40 }}>ð³</div>
+                <div style={{ fontSize:40 }}>🍳</div>
                 <div style={{ fontFamily:"'Playfair Display',serif", fontSize:16, color:"#ccc", marginTop:10 }}>No recipes yet</div>
                 <div style={{ marginTop:6, fontSize:12 }}>Search the web or paste a URL to get started</div>
+              </div>
+            ) : listView ? (
+              <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                {filtered.map(r => (
+                  <div key={r.id} onClick={() => { setSelected(r); setView(views.DETAIL); }}
+                    style={{ background:"#fff", borderRadius:12, padding:"12px 14px", cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center",
+                      boxShadow:"0 1px 6px rgba(0,0,0,0.06)", transition:"transform 0.15s" }}
+                    onMouseEnter={e => e.currentTarget.style.transform="translateX(3px)"}
+                    onMouseLeave={e => e.currentTarget.style.transform=""}>
+                    <div style={{ flex:1, display:"flex", alignItems:"center", gap:12 }}>
+                      <div style={{ fontWeight:700, color:"#062846", fontSize:13, fontFamily:"'Playfair Display',serif", minWidth:200 }}>{r.title}</div>
+                      {r.cuisine && <span style={{ fontSize:10, color:"#fff", background:"#5938a2", borderRadius:12, padding:"3px 8px", fontWeight:600, flexShrink:0 }}>{r.cuisine}</span>}
+                      {r.tags?.some(t => proteinKeywords.some(p => t === p || t.includes(p))) && (
+                        <span style={{ fontSize:10, color:"#fff", background:"#23cca2", borderRadius:12, padding:"3px 8px", fontWeight:600, flexShrink:0 }}>
+                          {r.tags.find(t => proteinKeywords.some(p => t === p || t.includes(p)))}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
+                      <StarRating value={r.rating||0} />
+                      <span onClick={e => { e.stopPropagation(); toggleFav(r.id); }}
+                        style={{ fontSize:16, cursor:"pointer", color:r.favorite?"#ff492c":"#ccc", transition:"color 0.15s" }}>♥</span>
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : (
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12 }}>
@@ -393,33 +488,91 @@ If you cannot extract, return {"error":"message"}.`,
           </div>
         )}
 
-        {/* ââ FAVORITES ââ */}
+        {/* ── FAVORITES ── */}
         {view===views.FAVORITES && (
           <div>
-            <div style={{ fontFamily:"'Playfair Display',serif", fontSize:22, fontWeight:900, color:"#062846", marginBottom:16 }}>Favorites</div>
+            <div style={{ display:"flex", gap:8, marginBottom:16, alignItems:"center" }}>
+              <div style={{ fontFamily:"'Playfair Display',serif", fontSize:22, fontWeight:900, color:"#062846", flex:1 }}>Favorites</div>
+              <button onClick={() => setListView(!listView)}
+                style={{ padding:"10px 12px", borderRadius:10, border:"1.5px solid #e5e5e5", background:listView?"#062846":"#fff", color:listView?"#fff":"#888", cursor:"pointer", fontSize:14, fontFamily:"'DM Sans',sans-serif", fontWeight:600 }}
+                title={listView ? "Grid view" : "List view"}>
+                {listView ? "≡" : "▦"}
+              </button>
+            </div>
+            {/* Cuisine filter */}
+            <div style={{ display:"flex", gap:6, marginBottom:12, flexWrap:"wrap", alignItems:"center" }}>
+              <span style={{ fontSize:11, fontWeight:600, color:"#888", minWidth:60 }}>Cuisine:</span>
+              {["all", ...allCuisines].map(c => (
+                <button key={c} onClick={() => setFilterCuisine(c)}
+                  style={{ padding:"5px 12px", borderRadius:20, border:"none", cursor:"pointer", fontFamily:"'DM Sans',sans-serif", fontWeight:600, fontSize:11,
+                    background:filterCuisine===c?"#5938a2":"#f0f0f0",
+                    color:filterCuisine===c?"#fff":"#888", transition:"all 0.15s" }}>
+                  {c==="all" ? "All" : c}
+                </button>
+              ))}
+            </div>
+            {/* Protein filter */}
+            <div style={{ display:"flex", gap:6, marginBottom:18, flexWrap:"wrap", alignItems:"center" }}>
+              <span style={{ fontSize:11, fontWeight:600, color:"#888", minWidth:60 }}>Protein:</span>
+              {["all", ...allProteins].map(p => (
+                <button key={p} onClick={() => setFilterProtein(p)}
+                  style={{ padding:"5px 12px", borderRadius:20, border:"none", cursor:"pointer", fontFamily:"'DM Sans',sans-serif", fontWeight:600, fontSize:11,
+                    background:filterProtein===p?"#23cca2":"#f0f0f0",
+                    color:filterProtein===p?"#fff":"#888", transition:"all 0.15s" }}>
+                  {p==="all" ? "All" : p}
+                </button>
+              ))}
+            </div>
             {favs.length===0
               ? <div style={{ textAlign:"center", padding:"60px 0", color:"#bbb", fontSize:13 }}>Heart a recipe to save it here</div>
-              : <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12 }}>
+              : listView ? (
+                <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                  {favs.map(r => (
+                    <div key={r.id} onClick={() => { setSelected(r); setView(views.DETAIL); }}
+                      style={{ background:"#fff", borderRadius:12, padding:"12px 14px", cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center",
+                        boxShadow:"0 1px 6px rgba(0,0,0,0.06)", transition:"transform 0.15s" }}
+                      onMouseEnter={e => e.currentTarget.style.transform="translateX(3px)"}
+                      onMouseLeave={e => e.currentTarget.style.transform=""}>
+                      <div style={{ flex:1, display:"flex", alignItems:"center", gap:12 }}>
+                        <div style={{ fontWeight:700, color:"#062846", fontSize:13, fontFamily:"'Playfair Display',serif", minWidth:200 }}>{r.title}</div>
+                        {r.cuisine && <span style={{ fontSize:10, color:"#fff", background:"#5938a2", borderRadius:12, padding:"3px 8px", fontWeight:600, flexShrink:0 }}>{r.cuisine}</span>}
+                        {r.tags?.some(t => proteinKeywords.some(p => t === p || t.includes(p))) && (
+                          <span style={{ fontSize:10, color:"#fff", background:"#23cca2", borderRadius:12, padding:"3px 8px", fontWeight:600, flexShrink:0 }}>
+                            {r.tags.find(t => proteinKeywords.some(p => t === p || t.includes(p)))}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
+                        <StarRating value={r.rating||0} />
+                        <span onClick={e => { e.stopPropagation(); toggleFav(r.id); }}
+                          style={{ fontSize:16, cursor:"pointer", color:r.favorite?"#ff492c":"#ccc", transition:"color 0.15s" }}>♥</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12 }}>
                   {favs.map(r => <RecipeCard key={r.id} recipe={r} onClick={() => { setSelected(r); setView(views.DETAIL); }} onFav={toggleFav} />)}
                 </div>
+              )
             }
           </div>
         )}
 
-        {/* ââ ADD ââ */}
+        {/* ── ADD ── */}
         {view===views.ADD && (
           <div>
             <div style={{ fontFamily:"'Playfair Display',serif", fontSize:22, fontWeight:900, color:"#062846", marginBottom:16 }}>Add a Recipe</div>
             <div style={{ display:"flex", gap:8, marginBottom:20 }}>
-              <button onClick={() => { setAddTab("search"); setWebResults(null); setWebError(""); }} style={tabBtn(addTab==="search")}>ð Search Web</button>
-              <button onClick={() => { setAddTab("url"); setUrlError(""); }} style={tabBtn(addTab==="url")}>ð Paste URL</button>
+              <button onClick={() => { setAddTab("search"); setWebResults(null); setWebError(""); }} style={tabBtn(addTab==="search")}>🔍 Search Web</button>
+              <button onClick={() => { setAddTab("url"); setUrlError(""); }} style={tabBtn(addTab==="url")}>🔗 Paste URL</button>
             </div>
 
             {addTab==="search" && (
               <div style={{ background:"#fff", borderRadius:18, padding:20, boxShadow:"0 2px 12px rgba(0,0,0,0.07)" }}>
                 <div style={{ display:"flex", gap:8 }}>
                   <input value={webQuery} onChange={e=>{setWebQuery(e.target.value);setWebError("");}} onKeyDown={e=>e.key==="Enter"&&searchWeb()}
-                    placeholder="e.g. easy chicken pasta, vegan tacosâ¦"
+                    placeholder="e.g. easy chicken pasta, vegan tacos…"
                     style={{ flex:1, padding:"10px 13px", borderRadius:10, border:"1.5px solid #e5e5e5", fontSize:13, outline:"none" }} />
                   <button onClick={searchWeb} disabled={!webQuery.trim()||webLoading}
                     style={{ padding:"10px 16px", borderRadius:10, border:"none", background:webQuery.trim()?"#ff492c":"#eee", color:webQuery.trim()?"#fff":"#bbb", fontWeight:700, fontSize:13, cursor:webQuery.trim()?"pointer":"not-allowed", fontFamily:"'DM Sans',sans-serif", flexShrink:0 }}>
@@ -427,7 +580,7 @@ If you cannot extract, return {"error":"message"}.`,
                   </button>
                 </div>
                 {webError && <div style={{ color:"#ff492c", fontSize:12, marginTop:10 }}>{webError}</div>}
-                {webLoading && <Spinner label="Searchingâ¦" />}
+                {webLoading && <Spinner label="Searching…" />}
                 {webResults && webResults.length===0 && !webLoading && <div style={{ textAlign:"center", marginTop:20, color:"#aaa", fontSize:13 }}>No results. Try different terms.</div>}
                 {webResults && webResults.length>0 && (
                   <div style={{ marginTop:16, display:"flex", flexDirection:"column", gap:10 }}>
@@ -439,12 +592,12 @@ If you cannot extract, return {"error":"message"}.`,
                           <div style={{ fontSize:11, color:"#888", marginTop:3 }}>{r.description}</div>
                           <div style={{ display:"flex", gap:7, marginTop:6, flexWrap:"wrap", alignItems:"center" }}>
                             {r.source && <span style={{ fontSize:10, color:"#5938a2", fontWeight:600 }}>{r.source}</span>}
-                            {r.time && <span style={{ fontSize:10, color:"#aaa" }}>â± {r.time}</span>}
+                            {r.time && <span style={{ fontSize:10, color:"#aaa" }}>⏱ {r.time}</span>}
                           </div>
                         </div>
                         <button onClick={() => importFromResult(r,i)} disabled={importingId===i}
                           style={{ flexShrink:0, padding:"7px 13px", borderRadius:9, border:"none", background:importingId===i?"#eee":"#062846", color:importingId===i?"#aaa":"#fff", fontWeight:700, fontSize:11, cursor:importingId===i?"not-allowed":"pointer", fontFamily:"'DM Sans',sans-serif" }}>
-                          {importingId===i?"Savingâ¦":"+ Save"}
+                          {importingId===i?"Saving…":"+ Save"}
                         </button>
                       </div>
                     ))}
@@ -458,7 +611,7 @@ If you cannot extract, return {"error":"message"}.`,
                 <input value={url} onChange={e=>{setUrl(e.target.value);setUrlError("");}} onKeyDown={e=>e.key==="Enter"&&fetchFromUrl()}
                   placeholder="https://..." style={{ width:"100%", padding:"11px 14px", borderRadius:10, border:"1.5px solid #e5e5e5", fontSize:13, outline:"none", marginBottom:12 }} />
                 {urlError && <div style={{ color:"#ff492c", fontSize:12, marginBottom:10 }}>{urlError}</div>}
-                {urlLoading ? <Spinner label="Extracting recipeâ¦" /> : (
+                {urlLoading ? <Spinner label="Extracting recipe…" /> : (
                   <button onClick={fetchFromUrl} disabled={!url.trim()}
                     style={{ width:"100%", padding:12, borderRadius:10, border:"none", background:url.trim()?"#ff492c":"#eee", color:url.trim()?"#fff":"#bbb", fontWeight:700, fontSize:14, cursor:url.trim()?"pointer":"not-allowed", fontFamily:"'DM Sans',sans-serif" }}>
                     Extract Recipe
@@ -469,25 +622,25 @@ If you cannot extract, return {"error":"message"}.`,
           </div>
         )}
 
-        {/* ââ SUGGEST ââ */}
+        {/* ── SUGGEST ── */}
         {view===views.SUGGEST && (
           <div>
             <div style={{ fontFamily:"'Playfair Display',serif", fontSize:22, fontWeight:900, color:"#062846", marginBottom:16 }}>What should I make?</div>
             <div style={{ display:"flex", gap:8, marginBottom:20 }}>
-              <button onClick={() => setSuggestTab("ingredients")} style={tabBtn(suggestTab==="ingredients")}>ð§ By Ingredients</button>
-              <button onClick={() => setSuggestTab("overdue")} style={tabBtn(suggestTab==="overdue")}>â° Haven't Made In a While</button>
+              <button onClick={() => setSuggestTab("ingredients")} style={tabBtn(suggestTab==="ingredients")}>🧅 By Ingredients</button>
+              <button onClick={() => setSuggestTab("overdue")} style={tabBtn(suggestTab==="overdue")}>⏰ Haven't Made In a While</button>
             </div>
 
             {suggestTab==="ingredients" && (
               <div style={{ background:"#fff", borderRadius:18, padding:20, boxShadow:"0 2px 12px rgba(0,0,0,0.07)" }}>
                 <textarea value={ingredients} onChange={e=>setIngredients(e.target.value)}
-                  placeholder="e.g. chicken, garlic, lemon, pastaâ¦ or leave blank for open suggestions"
+                  placeholder="e.g. chicken, garlic, lemon, pasta… or leave blank for open suggestions"
                   rows={3} style={{ width:"100%", padding:"11px 14px", borderRadius:10, border:"1.5px solid #e5e5e5", fontSize:13, outline:"none", resize:"vertical", marginBottom:12 }} />
                 <button onClick={getSuggestions}
                   style={{ width:"100%", padding:12, borderRadius:10, border:"none", background:"#5938a2", color:"#fff", fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"'DM Sans',sans-serif" }}>
-                  {suggestLoading?"Thinkingâ¦":"Suggest Meals"}
+                  {suggestLoading?"Thinking…":"Suggest Meals"}
                 </button>
-                {suggestLoading && <Spinner label="Checking your pantryâ¦" />}
+                {suggestLoading && <Spinner label="Checking your pantry…" />}
                 {suggestions && suggestions.length===0 && <div style={{ textAlign:"center", marginTop:16, color:"#aaa", fontSize:13 }}>No strong matches. Try different ingredients.</div>}
                 {suggestions && suggestions.length>0 && (
                   <div style={{ marginTop:16, display:"flex", flexDirection:"column", gap:9 }}>
@@ -543,7 +696,7 @@ If you cannot extract, return {"error":"message"}.`,
           </div>
         )}
 
-        {/* ââ COOK LOG ââ */}
+        {/* ── COOK LOG ── */}
         {view===views.LOG && (
           <div>
             <div style={{ fontFamily:"'Playfair Display',serif", fontSize:22, fontWeight:900, color:"#062846", marginBottom:6 }}>Cook Log</div>
@@ -579,26 +732,26 @@ If you cannot extract, return {"error":"message"}.`,
           </div>
         )}
 
-        {/* ââ DETAIL ââ */}
+        {/* ── DETAIL ── */}
         {view===views.DETAIL && selected && (
           <div>
             <button onClick={() => setView(views.HOME)}
               style={{ background:"none", border:"none", cursor:"pointer", color:"#888", fontSize:12, fontWeight:600, marginBottom:12, display:"flex", alignItems:"center", gap:4, padding:0 }}>
-              â Back
+              ← Back
             </button>
             <div style={{ background:"#fff", borderRadius:20, overflow:"hidden", boxShadow:"0 2px 16px rgba(0,0,0,0.08)" }}>
               <div style={{ height:140, background:"linear-gradient(135deg,#062846 0%,#5938a2 100%)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:56, position:"relative" }}>
-                ð½ï¸
+                🍽️
                 {selected.cookLog?.length > 0 && (
                   <div style={{ position:"absolute", bottom:10, right:12, background:"rgba(255,255,255,0.15)", borderRadius:20, padding:"3px 10px", fontSize:11, color:"#fff", fontWeight:600 }}>
-                    Made {selected.cookLog.length}Ã 
+                    Made {selected.cookLog.length}× 
                   </div>
                 )}
               </div>
               <div style={{ padding:"20px 20px 28px" }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:10 }}>
                   <div style={{ fontFamily:"'Playfair Display',serif", fontSize:20, fontWeight:900, color:"#062846", lineHeight:1.2 }}>{selected.title}</div>
-                  <span onClick={() => toggleFav(selected.id)} style={{ fontSize:22, cursor:"pointer", color:selected.favorite?"#ff492c":"#ddd", flexShrink:0, transition:"color 0.15s" }}>â¥</span>
+                  <span onClick={() => toggleFav(selected.id)} style={{ fontSize:22, cursor:"pointer", color:selected.favorite?"#ff492c":"#ddd", flexShrink:0, transition:"color 0.15s" }}>♥</span>
                 </div>
 
                 {/* Added by */}
@@ -610,15 +763,15 @@ If you cannot extract, return {"error":"message"}.`,
                 )}
 
                 <div style={{ display:"flex", gap:14, marginTop:10, fontSize:12, color:"#888" }}>
-                  {selected.time && <span>â± {selected.time}</span>}
-                  {selected.servings && <span>ð¤ {selected.servings}</span>}
+                  {selected.time && <span>⏱ {selected.time}</span>}
+                  {selected.servings && <span>👤 {selected.servings}</span>}
                 </div>
                 <div style={{ marginTop:10 }}><StarRating value={selected.rating||0} onChange={r => setRating(selected.id,r)} /></div>
 
                 {/* "I made this" button */}
                 <button onClick={() => logCook(selected.id)}
                   style={{ marginTop:14, padding:"10px 20px", borderRadius:10, border:"none", background:"#23cca2", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"'DM Sans',sans-serif" }}>
-                  â I made this
+                  ✓ I made this
                 </button>
 
                 {/* Cook history */}
@@ -655,6 +808,17 @@ If you cannot extract, return {"error":"message"}.`,
                     : <ol style={{ paddingLeft:16, display:"flex", flexDirection:"column", gap:9 }}>{selected.instructions.map((step,i) => <li key={i} style={{ fontSize:13, color:"#444", lineHeight:1.6 }}>{step}</li>)}</ol>}
                 </div>
 
+                {selected.ingredients.length===0 && selected.url && (
+                  <div style={{ marginTop:18 }}>
+                    {fetchingFromUrl ? <Spinner label="Fetching from source…" /> : (
+                      <button onClick={() => fetchFromUrlInDetail(selected.url)}
+                        style={{ padding:"10px 16px", borderRadius:10, border:"none", background:"#5938a2", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"'DM Sans',sans-serif" }}>
+                        Fetch ingredients & instructions from source
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 {selected.notes && (
                   <div style={{ marginTop:18, background:"#fffbf0", borderRadius:10, padding:"11px 13px", borderLeft:"3px solid #ffd200" }}>
                     <div style={{ fontSize:10, fontWeight:700, color:"#8a6e00", marginBottom:4, textTransform:"uppercase", letterSpacing:0.5 }}>Notes</div>
@@ -664,7 +828,7 @@ If you cannot extract, return {"error":"message"}.`,
 
                 {selected.url && (
                   <div style={{ marginTop:18 }}>
-                    <a href={selected.url} target="_blank" rel="noreferrer" style={{ fontSize:11, color:"#5938a2", textDecoration:"none", fontWeight:600 }}>View original source â</a>
+                    <a href={selected.url} target="_blank" rel="noreferrer" style={{ fontSize:11, color:"#5938a2", textDecoration:"none", fontWeight:600 }}>View original source ↗</a>
                   </div>
                 )}
 
