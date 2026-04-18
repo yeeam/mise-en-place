@@ -681,20 +681,7 @@ If you cannot extract, return {"error":"message"}.`,
                     style={{ flex:1, padding:"10px 14px", borderRadius:12, border:"1.5px solid #e5e5e5", fontSize:13, background:"#fff", outline:"none" }} />
                   <button onClick={() => setListView(!listView)}
                     style={{ padding:"10px 12px", borderRadius:10, border:"1.5px solid #e5e5e5", background:listView?"#062846":"#fff", color:listView?"#fff":"#888", cursor:"pointer", fontSize:14, fontFamily:"'DM Sans',sans-serif", fontWeight:600 }}
-                    title=
-                {/* Recipe status filter */}
-                <div style={{ display:"flex", gap:6, marginBottom:18, flexWrap:"wrap", alignItems:"center" }}>
-                  <span style={{ fontSize:11, fontWeight:600, color:"#888", minWidth:60 }}>Recipe:</span>
-                  {[{k:"all",label:"All"},{k:"has",label:"Has recipe"},{k:"needs",label:"Needs recipe"}].map(({k,label}) => (
-                    <button key={k} onClick={() => setFilterRecipeStatus(k)}
-                      style={{ padding:"5px 12px", borderRadius:20, border:"none", cursor:"pointer", fontFamily:"'DM Sans',sans-serif", fontWeight:600, fontSize:11,
-                        background:filterRecipeStatus===k?(k==="has"?"#23cca2":k==="needs"?"#ff492c":"#062846"):"#f0f0f0",
-                        color:filterRecipeStatus===k?"#fff":"#888", transition:"all 0.15s" }}>
-                      {label}
-                    </button>
-                  ))}
-                </div>
-{listView ? "Grid view" : "List view"}>
+                    title={listView ? "Grid view" : "List view"}>
                     {listView ? "≡" : "▦"}
                   </button>
                 </div>
@@ -730,6 +717,18 @@ If you cannot extract, return {"error":"message"}.`,
                         background:filterProtein===p?"#23cca2":"#f0f0f0",
                         color:filterProtein===p?"#fff":"#888", transition:"all 0.15s" }}>
                       {p==="all" ? "All" : p}
+                    </button>
+                  ))}
+                </div>
+                {/* Recipe status filter */}
+                <div style={{ display:"flex", gap:6, marginBottom:18, flexWrap:"wrap", alignItems:"center" }}>
+                  <span style={{ fontSize:11, fontWeight:600, color:"#888", minWidth:60 }}>Recipe:</span>
+                  {[{k:"all",label:"All"},{k:"has",label:"Has recipe"},{k:"needs",label:"Needs recipe"}].map(({k,label}) => (
+                    <button key={k} onClick={() => setFilterRecipeStatus(k)}
+                      style={{ padding:"5px 12px", borderRadius:20, border:"none", cursor:"pointer", fontFamily:"'DM Sans',sans-serif", fontWeight:600, fontSize:11,
+                        background:filterRecipeStatus===k?(k==="has"?"#23cca2":k==="needs"?"#ff492c":"#062846"):"#f0f0f0",
+                        color:filterRecipeStatus===k?"#fff":"#888", transition:"all 0.15s" }}>
+                      {label}
                     </button>
                   ))}
                 </div>
@@ -946,18 +945,6 @@ If you cannot extract, return {"error":"message"}.`,
                           );
                         })}
                       </div>
-                {/* Recipe status filter */}
-                <div style={{ display:"flex", gap:6, marginBottom:18, flexWrap:"wrap", alignItems:"center" }}>
-                  <span style={{ fontSize:11, fontWeight:600, color:"#888", minWidth:60 }}>Recipe:</span>
-                  {[{k:"all",label:"All"},{k:"has",label:"Has recipe"},{k:"needs",label:"Needs recipe"}].map(({k,label}) => (
-                    <button key={k} onClick={() => setFilterRecipeStatus(k)}
-                      style={{ padding:"5px 12px", borderRadius:20, border:"none", cursor:"pointer", fontFamily:"'DM Sans',sans-serif", fontWeight:600, fontSize:11,
-                        background:filterRecipeStatus===k?(k==="has"?"#23cca2":k==="needs"?"#ff492c":"#062846"):"#f0f0f0",
-                        color:filterRecipeStatus===k?"#fff":"#888", transition:"all 0.15s" }}>
-                      {label}
-                    </button>
-                  ))}
-                </div>
                     )}
                   </div>
                 )}
