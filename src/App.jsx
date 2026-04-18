@@ -766,7 +766,9 @@ If you cannot extract, return {"error":"message"}.`,
                   </div>
                 </div>
                 );
-              })) : (
+                    })}
+                  </div>
+                ) : (
                   <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12 }}>
                     {filtered.map(r => <RecipeCard key={r.id} recipe={r} onClick={() => { setSelected(r); setView(views.DETAIL); }} onFav={toggleFav} />)}
                   </div>
