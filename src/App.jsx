@@ -65,7 +65,7 @@ function recipeToRow(recipe) {
   };
 }
 
-const views = { HOME:"home", DETAIL:"detail", ADD:"add", SUGGEST:"suggest", FAVORITES:"favorites", LOG:"log", SHARED:"shared" };
+const views = { HOME:"home", DETAIL:"detail", ADD:"add", FAVORITES:"favorites", LOG:"log", SHARED:"shared" };
 
 function StarRating({ value, onChange }) {
   const [hover, setHover] = useState(0);
@@ -168,15 +168,10 @@ export default function App() {
   const [showUserModal, setShowUserModal] = useState(false);
   const [nameInput, setNameInput] = useState("");
 
-  const [addTab, setAddTab] = useState("search");
+  const [addTab, setAddTab] = useState("url");
   const [url, setUrl] = useState("");
   const [urlLoading, setUrlLoading] = useState(false);
   const [urlError, setUrlError] = useState("");
-  const [webQuery, setWebQuery] = useState("");
-  const [webResults, setWebResults] = useState(null);
-  const [webLoading, setWebLoading] = useState(false);
-  const [webError, setWebError] = useState("");
-  const [importingId, setImportingId] = useState(null);
 
   // Manual entry state
   const [manualTitle, setManualTitle] = useState("");
@@ -189,10 +184,6 @@ export default function App() {
   const [manualUrl, setManualUrl] = useState("");
   const [manualSaving, setManualSaving] = useState(false);
 
-  const [ingredients, setIngredients] = useState("");
-  const [suggestions, setSuggestions] = useState(null);
-  const [suggestLoading, setSuggestLoading] = useState(false);
-  const [suggestTab, setSuggestTab] = useState("ingredients");
 
   const [search, setSearch] = useState("");
   const [filterUser, setFilterUser] = useState("all");
@@ -538,68 +529,6 @@ If you cannot extract, return {"error":"message"}.`,
     finally { setFetchingFromUrl(false); }
   }
 
-  async function searchWeb() {
-    if (!webQuery.trim()) return;
-    setWebLoading(true); setWebError(""); setWebResults(null);
-    try {
-      const text = await callClaude(
-        `You are a recipe search assistant. Find 5-6 real recipes. Return ONLY a JSON array (no markdown):
-[{"title":"string","source":"site name","url":"full https url","description":"one sentence","tags":["string"],"time":"string"}]`,
-        `Find recipes for: ${webQuery}`, true
-      );
-      setWebResults(parseJSON(text));
-    } catch { setWebError("Search failed. Try again."); }
-    finally { setWebLoading(false); }
-  }
-
-  async function importFromResult(result, idx) {
-    setImportingId(idx);
-    try {
-      const text = await callClaude(
-        `Extract the full recipe from the URL. Return ONLY valid JSON (no markdown):
-{"title":"string","ingredients":["string"],"instructions":["string"],"tags":["string"],"servings":"string","time":"string"}
-If you cannot extract, return {"error":"message"}.`,
-        `Extract from: ${result.url}`, true
-      );
-      const parsed = parseJSON(text);
-      if (parsed.error) throw new Error(parsed.error);
-      await addRecipeObj(parsed, result.url);
-      setView(views.HOME);
-    } catch {
-      await addRecipeObj({title:result.title, tags:result.tags||[], ingredients:[], instructions:[], time:result.time||""}, result.url);
-      setView(views.HOME);
-    }
-    finally { setImportingId(null); }
-  }
-
-  async function getSuggestions() {
-    setSuggestLoading(true); setSuggestions(null);
-    try {
-      const recipeList = recipes.map(r => `- ${r.title} (ingredients: ${r.ingredients.slice(0,5).join(", ")})`).join("\n");
-      const prompt = ingredients.trim()
-        ? `I have these ingredients: ${ingredients}.\n\nFrom my saved recipes below, which can I make? Rank them.\n\n${recipeList}`
-        : `From my saved recipes below, suggest 3-5 meals for tonight.\n\n${recipeList}`;
-      const text = await callClaude(
-        `You are a meal planning assistant. Return ONLY a JSON array (no markdown): [{"title":"string","reason":"string","match":"high|medium|low"}]. Only reference saved recipes.`,
-        prompt
-      );
-      setSuggestions(parseJSON(text));
-    } catch { setSuggestions([]); }
-    finally { setSuggestLoading(false); }
-  }
-
-  function getOverdueSuggestions() {
-    const now = Date.now();
-    return [...recipes]
-      .map(r => {
-        const lastMade = r.cookLog?.length > 0 ? new Date(r.cookLog[r.cookLog.length-1]).getTime() : 0;
-        const daysSince = lastMade === 0 ? 999 : Math.floor((now - lastMade) / 86400000);
-        return { ...r, daysSince };
-      })
-      .filter(r => r.daysSince > 21)
-      .sort((a,b) => b.daysSince - a.daysSince)
-      .slice(0, 8);
-  }
 
   const allMembers = [...new Set(recipes.map(r => r.addedBy).filter(Boolean))];
   const allCuisines = [...new Set(recipes.map(r => r.cuisine).filter(Boolean))].sort();
@@ -760,7 +689,7 @@ If you cannot extract, return {"error":"message"}.`,
                 mise <span style={{color:"#ff492c"}}>en place</span>
               </div>
               <nav style={{ display:"flex", gap:1, alignItems:"center" }}>
-                {[{label:"Recipes",v:views.HOME},{label:"Favs",v:views.FAVORITES},{label:"+ Add",v:views.ADD},{label:"✦ Suggest",v:views.SUGGEST},{label:"📋 Log",v:views.LOG}].map(n => (
+                {[{label:"Recipes",v:views.HOME},{label:"Favs",v:views.FAVORITES},{label:"+ Add",v:views.ADD},{label:"📋 Log",v:views.LOG}].map(n => (
                   <button key={n.v} onClick={() => setView(n.v)} style={navBtn(view===n.v)}>{n.label}</button>
                 ))}
                 {currentUser && (
@@ -958,48 +887,11 @@ If you cannot extract, return {"error":"message"}.`,
               <div>
                 <div style={{ fontFamily:"'Playfair Display',serif", fontSize:22, fontWeight:900, color:"#062846", marginBottom:16 }}>Add a Recipe</div>
                 <div style={{ display:"flex", gap:8, marginBottom:20 }}>
-                  <button onClick={() => { setAddTab("search"); setWebResults(null); setWebError(""); }} style={tabBtn(addTab==="search")}>🔍 Search Web</button>
                   <button onClick={() => { setAddTab("url"); setUrlError(""); }} style={tabBtn(addTab==="url")}>🔗 Paste URL</button>
                   <button onClick={() => setAddTab("manual")} style={tabBtn(addTab==="manual")}>✏️ Type It In</button>
                 </div>
 
-                {addTab==="search" && (
-                  <div style={{ background:"#fff", borderRadius:18, padding:20, boxShadow:"0 2px 12px rgba(0,0,0,0.07)" }}>
-                    <div style={{ display:"flex", gap:8 }}>
-                      <input value={webQuery} onChange={e=>{setWebQuery(e.target.value);setWebError("");}} onKeyDown={e=>e.key==="Enter"&&searchWeb()}
-                        placeholder="e.g. easy chicken pasta, vegan tacos…"
-                        style={{ flex:1, padding:"10px 13px", borderRadius:10, border:"1.5px solid #e5e5e5", fontSize:13, outline:"none" }} />
-                      <button onClick={searchWeb} disabled={!webQuery.trim()||webLoading}
-                        style={{ padding:"10px 16px", borderRadius:10, border:"none", background:webQuery.trim()?"#ff492c":"#eee", color:webQuery.trim()?"#fff":"#bbb", fontWeight:700, fontSize:13, cursor:webQuery.trim()?"pointer":"not-allowed", fontFamily:"'DM Sans',sans-serif", flexShrink:0 }}>
-                        Search
-                      </button>
-                    </div>
-                    {webError && <div style={{ color:"#ff492c", fontSize:12, marginTop:10 }}>{webError}</div>}
-                    {webLoading && <Spinner label="Searching…" />}
-                    {webResults && webResults.length===0 && !webLoading && <div style={{ textAlign:"center", marginTop:20, color:"#aaa", fontSize:13 }}>No results. Try different terms.</div>}
-                    {webResults && webResults.length>0 && (
-                      <div style={{ marginTop:16, display:"flex", flexDirection:"column", gap:10 }}>
-                        <div style={{ fontSize:10, color:"#aaa", fontWeight:700, letterSpacing:0.5 }}>{webResults.length} RESULTS</div>
-                        {webResults.map((r,i) => (
-                          <div key={i} style={{ border:"1.5px solid #eee", borderRadius:12, padding:"12px 14px", display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:10, background:"#fafafa" }}>
-                            <div style={{ flex:1 }}>
-                              <div style={{ fontWeight:700, color:"#062846", fontSize:13, fontFamily:"'Playfair Display',serif" }}>{r.title}</div>
-                              <div style={{ fontSize:11, color:"#888", marginTop:3 }}>{r.description}</div>
-                              <div style={{ display:"flex", gap:7, marginTop:6, flexWrap:"wrap", alignItems:"center" }}>
-                                {r.source && <span style={{ fontSize:10, color:"#5938a2", fontWeight:600 }}>{r.source}</span>}
-                                {r.time && <span style={{ fontSize:10, color:"#aaa" }}>⏱ {r.time}</span>}
-                              </div>
-                            </div>
-                            <button onClick={() => importFromResult(r,i)} disabled={importingId===i}
-                              style={{ flexShrink:0, padding:"7px 13px", borderRadius:9, border:"none", background:importingId===i?"#eee":"#062846", color:importingId===i?"#aaa":"#fff", fontWeight:700, fontSize:11, cursor:importingId===i?"not-allowed":"pointer", fontFamily:"'DM Sans',sans-serif" }}>
-                              {importingId===i?"Saving…":"+ Save"}
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
+
 
                 {addTab==="url" && (
                   <div style={{ background:"#fff", borderRadius:18, padding:20, boxShadow:"0 2px 12px rgba(0,0,0,0.07)" }}>
@@ -1080,80 +972,6 @@ If you cannot extract, return {"error":"message"}.`,
                       style={{ width:"100%", padding:12, borderRadius:10, border:"none", background:manualTitle.trim()?"#ff492c":"#eee", color:manualTitle.trim()?"#fff":"#bbb", fontWeight:700, fontSize:14, cursor:manualTitle.trim()&&!manualSaving?"pointer":"not-allowed", fontFamily:"'DM Sans',sans-serif" }}>
                       {manualSaving ? "Saving…" : "Save Recipe"}
                     </button>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* ── SUGGEST ── */}
-            {view===views.SUGGEST && (
-              <div>
-                <div style={{ fontFamily:"'Playfair Display',serif", fontSize:22, fontWeight:900, color:"#062846", marginBottom:16 }}>What should I make?</div>
-                <div style={{ display:"flex", gap:8, marginBottom:20 }}>
-                  <button onClick={() => setSuggestTab("ingredients")} style={tabBtn(suggestTab==="ingredients")}>🧅 By Ingredients</button>
-                  <button onClick={() => setSuggestTab("overdue")} style={tabBtn(suggestTab==="overdue")}>⏰ Haven't Made In a While</button>
-                </div>
-
-                {suggestTab==="ingredients" && (
-                  <div style={{ background:"#fff", borderRadius:18, padding:20, boxShadow:"0 2px 12px rgba(0,0,0,0.07)" }}>
-                    <textarea value={ingredients} onChange={e=>setIngredients(e.target.value)}
-                      placeholder="e.g. chicken, garlic, lemon, pasta… or leave blank for open suggestions"
-                      rows={3} style={{ width:"100%", padding:"11px 14px", borderRadius:10, border:"1.5px solid #e5e5e5", fontSize:13, outline:"none", resize:"vertical", marginBottom:12 }} />
-                    <button onClick={getSuggestions}
-                      style={{ width:"100%", padding:12, borderRadius:10, border:"none", background:"#5938a2", color:"#fff", fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"'DM Sans',sans-serif" }}>
-                      {suggestLoading?"Thinking…":"Suggest Meals"}
-                    </button>
-                    {suggestLoading && <Spinner label="Checking your pantry…" />}
-                    {suggestions && suggestions.length===0 && <div style={{ textAlign:"center", marginTop:16, color:"#aaa", fontSize:13 }}>No strong matches. Try different ingredients.</div>}
-                    {suggestions && suggestions.length>0 && (
-                      <div style={{ marginTop:16, display:"flex", flexDirection:"column", gap:9 }}>
-                        {suggestions.map((s,i) => {
-                          const match = recipes.find(r => r.title.toLowerCase()===s.title?.toLowerCase()) ||
-                                        recipes.find(r => r.title.toLowerCase().includes(s.title?.toLowerCase()?.split(" ")[0]));
-                          return (
-                            <div key={i} onClick={() => match && (setSelected(match), setView(views.DETAIL))}
-                              style={{ background:"#f7f6f3", borderRadius:10, padding:"12px 14px", cursor:match?"pointer":"default",
-                                borderLeft:"4px solid", borderColor:s.match==="high"?"#23cca2":s.match==="medium"?"#ffd200":"#ddd", transition:"transform 0.15s" }}
-                              onMouseEnter={e => match && (e.currentTarget.style.transform="translateX(3px)")}
-                              onMouseLeave={e => e.currentTarget.style.transform=""}>
-                              <div style={{ fontWeight:700, color:"#062846", fontSize:13 }}>{s.title}</div>
-                              <div style={{ fontSize:11, color:"#666", marginTop:3 }}>{s.reason}</div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {suggestTab==="overdue" && (
-                  <div>
-                    <div style={{ fontSize:12, color:"#888", marginBottom:14 }}>Recipes you haven't made in 21+ days, or never logged.</div>
-                    {getOverdueSuggestions().length===0
-                      ? <div style={{ background:"#fff", borderRadius:14, padding:24, textAlign:"center", color:"#aaa", fontSize:13 }}>You're on top of your rotation!</div>
-                      : <div style={{ display:"flex", flexDirection:"column", gap:9 }}>
-                          {getOverdueSuggestions().map(r => (
-                            <div key={r.id} onClick={() => { setSelected(r); setView(views.DETAIL); }}
-                              style={{ background:"#fff", borderRadius:12, padding:"13px 15px", cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center",
-                                boxShadow:"0 1px 6px rgba(0,0,0,0.06)", transition:"transform 0.15s" }}
-                              onMouseEnter={e => e.currentTarget.style.transform="translateX(3px)"}
-                              onMouseLeave={e => e.currentTarget.style.transform=""}>
-                              <div>
-                                <div style={{ fontWeight:700, color:"#062846", fontSize:13, fontFamily:"'Playfair Display',serif" }}>{r.title}</div>
-                                <div style={{ fontSize:11, color:"#aaa", marginTop:3 }}>
-                                  {r.daysSince===999 ? "Never logged" : `Last made ${r.daysSince} days ago`}
-                                </div>
-                              </div>
-                              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                                {r.addedBy && <Avatar name={r.addedBy} size={22} />}
-                                <span style={{ background:"#fff8d6", color:"#8a6e00", borderRadius:20, padding:"2px 9px", fontSize:10, fontWeight:700 }}>
-                                  {r.daysSince===999?"Never":"Overdue"}
-                                </span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                    }
                   </div>
                 )}
               </div>
