@@ -178,6 +178,17 @@ export default function App() {
   const [webError, setWebError] = useState("");
   const [importingId, setImportingId] = useState(null);
 
+  // Manual entry state
+  const [manualTitle, setManualTitle] = useState("");
+  const [manualIngredients, setManualIngredients] = useState("");
+  const [manualInstructions, setManualInstructions] = useState("");
+  const [manualTags, setManualTags] = useState("");
+  const [manualCuisine, setManualCuisine] = useState("");
+  const [manualEase, setManualEase] = useState("");
+  const [manualNotes, setManualNotes] = useState("");
+  const [manualUrl, setManualUrl] = useState("");
+  const [manualSaving, setManualSaving] = useState(false);
+
   const [ingredients, setIngredients] = useState("");
   const [suggestions, setSuggestions] = useState(null);
   const [suggestLoading, setSuggestLoading] = useState(false);
@@ -949,6 +960,7 @@ If you cannot extract, return {"error":"message"}.`,
                 <div style={{ display:"flex", gap:8, marginBottom:20 }}>
                   <button onClick={() => { setAddTab("search"); setWebResults(null); setWebError(""); }} style={tabBtn(addTab==="search")}>🔍 Search Web</button>
                   <button onClick={() => { setAddTab("url"); setUrlError(""); }} style={tabBtn(addTab==="url")}>🔗 Paste URL</button>
+                  <button onClick={() => setAddTab("manual")} style={tabBtn(addTab==="manual")}>✏️ Type It In</button>
                 </div>
 
                 {addTab==="search" && (
@@ -1000,6 +1012,74 @@ If you cannot extract, return {"error":"message"}.`,
                         Extract Recipe
                       </button>
                     )}
+                  </div>
+                )}
+
+                {addTab==="manual" && (
+                  <div style={{ background:"#fff", borderRadius:18, padding:20, boxShadow:"0 2px 12px rgba(0,0,0,0.07)" }}>
+                    <div style={{ marginBottom:14 }}>
+                      <label style={{ fontSize:11, fontWeight:700, color:"#888", letterSpacing:0.5, display:"block", marginBottom:5 }}>TITLE *</label>
+                      <input value={manualTitle} onChange={e=>setManualTitle(e.target.value)} placeholder="e.g. Chicken Tikka Masala"
+                        style={{ width:"100%", padding:"10px 13px", borderRadius:10, border:"1.5px solid #e5e5e5", fontSize:13, outline:"none", fontFamily:"'DM Sans',sans-serif" }} />
+                    </div>
+                    <div style={{ marginBottom:14 }}>
+                      <label style={{ fontSize:11, fontWeight:700, color:"#888", letterSpacing:0.5, display:"block", marginBottom:5 }}>SOURCE URL (optional)</label>
+                      <input value={manualUrl} onChange={e=>setManualUrl(e.target.value)} placeholder="https://..."
+                        style={{ width:"100%", padding:"10px 13px", borderRadius:10, border:"1.5px solid #e5e5e5", fontSize:13, outline:"none", fontFamily:"'DM Sans',sans-serif" }} />
+                    </div>
+                    <div style={{ marginBottom:14 }}>
+                      <label style={{ fontSize:11, fontWeight:700, color:"#888", letterSpacing:0.5, display:"block", marginBottom:5 }}>INGREDIENTS (one per line)</label>
+                      <textarea value={manualIngredients} onChange={e=>setManualIngredients(e.target.value)} placeholder={"1 lb chicken thighs\n2 tbsp olive oil\n3 cloves garlic"}
+                        rows={6} style={{ width:"100%", padding:"10px 13px", borderRadius:10, border:"1.5px solid #e5e5e5", fontSize:13, outline:"none", resize:"vertical", fontFamily:"'DM Sans',sans-serif" }} />
+                    </div>
+                    <div style={{ marginBottom:14 }}>
+                      <label style={{ fontSize:11, fontWeight:700, color:"#888", letterSpacing:0.5, display:"block", marginBottom:5 }}>INSTRUCTIONS (one step per line)</label>
+                      <textarea value={manualInstructions} onChange={e=>setManualInstructions(e.target.value)} placeholder={"Preheat oven to 400F.\nSeason chicken.\nBake 25 min."}
+                        rows={6} style={{ width:"100%", padding:"10px 13px", borderRadius:10, border:"1.5px solid #e5e5e5", fontSize:13, outline:"none", resize:"vertical", fontFamily:"'DM Sans',sans-serif" }} />
+                    </div>
+                    <div style={{ display:"flex", gap:10, marginBottom:14 }}>
+                      <div style={{ flex:1 }}>
+                        <label style={{ fontSize:11, fontWeight:700, color:"#888", letterSpacing:0.5, display:"block", marginBottom:5 }}>CUISINE</label>
+                        <input value={manualCuisine} onChange={e=>setManualCuisine(e.target.value)} placeholder="e.g. Asian, Italian"
+                          style={{ width:"100%", padding:"10px 13px", borderRadius:10, border:"1.5px solid #e5e5e5", fontSize:13, outline:"none", fontFamily:"'DM Sans',sans-serif" }} />
+                      </div>
+                      <div style={{ flex:1 }}>
+                        <label style={{ fontSize:11, fontWeight:700, color:"#888", letterSpacing:0.5, display:"block", marginBottom:5 }}>DIFFICULTY</label>
+                        <select value={manualEase} onChange={e=>setManualEase(e.target.value)}
+                          style={{ width:"100%", padding:"10px 13px", borderRadius:10, border:"1.5px solid #e5e5e5", fontSize:13, outline:"none", fontFamily:"'DM Sans',sans-serif", background:"#fff" }}>
+                          <option value="">Select...</option>
+                          <option value="Easy">Easy</option>
+                          <option value="Medium">Medium</option>
+                          <option value="Hard">Hard</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div style={{ marginBottom:14 }}>
+                      <label style={{ fontSize:11, fontWeight:700, color:"#888", letterSpacing:0.5, display:"block", marginBottom:5 }}>TAGS (comma-separated)</label>
+                      <input value={manualTags} onChange={e=>setManualTags(e.target.value)} placeholder="e.g. Chicken, Instant Pot, Weeknight"
+                        style={{ width:"100%", padding:"10px 13px", borderRadius:10, border:"1.5px solid #e5e5e5", fontSize:13, outline:"none", fontFamily:"'DM Sans',sans-serif" }} />
+                    </div>
+                    <div style={{ marginBottom:18 }}>
+                      <label style={{ fontSize:11, fontWeight:700, color:"#888", letterSpacing:0.5, display:"block", marginBottom:5 }}>NOTES (optional)</label>
+                      <textarea value={manualNotes} onChange={e=>setManualNotes(e.target.value)} placeholder="Any tips, variations, or reminders…"
+                        rows={3} style={{ width:"100%", padding:"10px 13px", borderRadius:10, border:"1.5px solid #e5e5e5", fontSize:13, outline:"none", resize:"vertical", fontFamily:"'DM Sans',sans-serif" }} />
+                    </div>
+                    <button onClick={async () => {
+                        if (!manualTitle.trim()) return;
+                        setManualSaving(true);
+                        try {
+                          const parsed = { title: manualTitle.trim(), ingredients: manualIngredients.split("\n").map(s=>s.trim()).filter(Boolean), instructions: manualInstructions.split("\n").map(s=>s.trim()).filter(Boolean), tags: manualTags.split(",").map(s=>s.trim()).filter(Boolean), cuisine: manualCuisine.trim(), ease: manualEase };
+                          const newRecipe = await addRecipeObj(parsed, manualUrl.trim());
+                          if (manualNotes.trim() && newRecipe) await updateRecipe(newRecipe.id, { notes: manualNotes.trim() });
+                          setManualTitle(""); setManualIngredients(""); setManualInstructions(""); setManualTags(""); setManualCuisine(""); setManualEase(""); setManualNotes(""); setManualUrl("");
+                          setSelected(newRecipe); setView(views.DETAIL);
+                        } catch(e) { console.error("Manual save error:", e); }
+                        finally { setManualSaving(false); }
+                      }}
+                      disabled={!manualTitle.trim() || manualSaving}
+                      style={{ width:"100%", padding:12, borderRadius:10, border:"none", background:manualTitle.trim()?"#ff492c":"#eee", color:manualTitle.trim()?"#fff":"#bbb", fontWeight:700, fontSize:14, cursor:manualTitle.trim()&&!manualSaving?"pointer":"not-allowed", fontFamily:"'DM Sans',sans-serif" }}>
+                      {manualSaving ? "Saving…" : "Save Recipe"}
+                    </button>
                   </div>
                 )}
               </div>
