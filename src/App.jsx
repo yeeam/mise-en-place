@@ -250,6 +250,7 @@ function ImportFromUrl({ onImport }) {
 
 // ── FEATURE 3: Meal Planner ──
 const DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+const MEALS = ["Lunch", "Dinner"];
 
 function getWeekStart(date = new Date()) {
   const d = new Date(date);
@@ -262,8 +263,9 @@ function getWeekStart(date = new Date()) {
 function MealPlanner({ recipes, onSelectRecipe }) {
   const [weekStart, setWeekStart] = useState(getWeekStart());
   const [plan, setPlan] = useState({});
-  const [picker, setPicker] = useState(null);
+  const [picker, setPicker] = useState(null); // { day, meal }
   const [search, setSearch] = useState("");
+  const [noteDraft, setNoteDraft] = useState("");
 
   const key = `mealplan_${weekStart.toISOString().slice(0,10)}`;
   useEffect(() => {
@@ -276,11 +278,21 @@ function MealPlanner({ recipes, onSelectRecipe }) {
 
   const assign = (recipeId) => {
     if (!picker) return;
-    setPlan(prev => ({ ...prev, [`${picker.day}_Dinner`]: recipeId }));
+    setPlan(prev => ({ ...prev, [`${picker.day}_${picker.meal}`]: recipeId }));
     setPicker(null);
     setSearch("");
+    setNoteDraft("");
   };
-  const remove = (day, e) => { e.stopPropagation(); setPlan(prev => { const n = {...prev}; delete n[`${day}_Dinner`]; return n; }); };
+  const saveNote = () => {
+    if (!picker) return;
+    const k = `${picker.day}_${picker.meal}_note`;
+    setPlan(prev => { const n = {...prev}; if (noteDraft.trim()) n[k] = noteDraft.trim(); else delete n[k]; return n; });
+    setPicker(null);
+    setSearch("");
+    setNoteDraft("");
+  };
+  const remove = (day, meal, e) => { e.stopPropagation(); setPlan(prev => { const n = {...prev}; delete n[`${day}_${meal}`]; delete n[`${day}_${meal}_note`]; return n; }); };
+  const clearMeals = () => setPlan(prev => ({ notes: prev.notes || "" }));
   const getR = id => recipes.find(r => r.id === id);
 
   const weekEnd = new Date(weekStart); weekEnd.setDate(weekEnd.getDate() + 6);
@@ -300,11 +312,11 @@ function MealPlanner({ recipes, onSelectRecipe }) {
         <div style={{ fontFamily:"'Playfair Display',serif", fontSize:22, fontWeight:900, color:"#062846" }}>Meal Plan</div>
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
           <button onClick={() => { const d = new Date(weekStart); d.setDate(d.getDate()-7); setWeekStart(d); }}
-            style={{ width:30, height:30, borderRadius:8, border:"1.5px solid #e5e5e5", background:"#fff", cursor:"pointer", fontSize:15, color:"#555" }}>←</button>
+            style={{ width:30, height:30, borderRadius:8, border:"1.5px solid #e5e5e5", background:"#fff", cursor:"pointer", fontSize:15, color:"#555" }}>{"←"}</button>
           <span style={{ fontWeight:600, fontSize:13, color:"#333", minWidth:150, textAlign:"center" }}>{weekLabel}</span>
           <button onClick={() => { const d = new Date(weekStart); d.setDate(d.getDate()+7); setWeekStart(d); }}
-            style={{ width:30, height:30, borderRadius:8, border:"1.5px solid #e5e5e5", background:"#fff", cursor:"pointer", fontSize:15, color:"#555" }}>→</button>
-          <button onClick={() => setPlan({})}
+            style={{ width:30, height:30, borderRadius:8, border:"1.5px solid #e5e5e5", background:"#fff", cursor:"pointer", fontSize:15, color:"#555" }}>{"→"}</button>
+          <button onClick={clearMeals}
             style={{ padding:"5px 11px", borderRadius:8, border:"1.5px solid #e5e5e5", background:"transparent", color:"#aaa", fontSize:11, cursor:"pointer", fontFamily:"'DM Sans',sans-serif" }}>
             Clear
           </button>
@@ -315,30 +327,46 @@ function MealPlanner({ recipes, onSelectRecipe }) {
         {DAYS.map((day, i) => {
           const date = new Date(weekStart); date.setDate(date.getDate() + i);
           const isToday = today.toDateString() === date.toDateString();
-          const recipe = getR(plan[`${day}_Dinner`]);
           return (
-            <div key={day} style={{ background:"#fff", borderRadius:12, border:isToday?"2px solid #ff492c":"1.5px solid #eee", overflow:"hidden", minHeight:130 }}>
+            <div key={day} style={{ background:"#fff", borderRadius:12, border:isToday?"2px solid #ff492c":"1.5px solid #eee", overflow:"hidden", minHeight:180 }}>
               <div style={{ padding:"6px 8px", background:isToday?"#ff492c":"#062846", color:"#fff" }}>
                 <div style={{ fontSize:11, fontWeight:700 }}>{day}</div>
                 <div style={{ fontSize:10, opacity:0.7 }}>{date.toLocaleDateString("en-US",{month:"short",day:"numeric"})}</div>
               </div>
               <div style={{ padding:7 }}>
-                <div onClick={() => { setPicker({ day }); setSearch(""); }}
-                  style={{ borderRadius:8, padding:"7px 8px", background:recipe?"#f0fff8":"#fafafa", border:recipe?"1.5px solid #23cca2":"1.5px dashed #ddd", cursor:"pointer", minHeight:60, display:"flex", flexDirection:"column", justifyContent:"space-between" }}>
-                  <div style={{ fontSize:9, fontWeight:700, color:"#aaa", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:3 }}>Dinner</div>
-                  {recipe ? (
-                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
-                      <span style={{ fontSize:11, fontWeight:600, color:"#062846", lineHeight:1.3 }}>{recipe.title}</span>
-                      <button onClick={e => remove(day,e)} style={{ background:"none", border:"none", color:"#ccc", cursor:"pointer", fontSize:13, padding:0, lineHeight:1, marginLeft:3, flexShrink:0 }}>×</button>
+                {MEALS.map(meal => {
+                  const recipe = getR(plan[`${day}_${meal}`]);
+                  const note = plan[`${day}_${meal}_note`];
+                  const filled = recipe || note;
+                  return (
+                    <div key={meal} onClick={() => { setPicker({ day, meal }); setSearch(""); setNoteDraft(plan[`${day}_${meal}_note`] || ""); }}
+                      style={{ borderRadius:8, padding:"7px 8px", marginBottom:6, background:filled?"#f0fff8":"#fafafa", border:filled?"1.5px solid #23cca2":"1.5px dashed #ddd", cursor:"pointer", minHeight:52, display:"flex", flexDirection:"column", justifyContent:"space-between" }}>
+                      <div style={{ fontSize:9, fontWeight:700, color:"#aaa", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:3 }}>{meal}</div>
+                      {filled ? (
+                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:3 }}>
+                          <div style={{ minWidth:0 }}>
+                            {recipe && <div onClick={e => { e.stopPropagation(); onSelectRecipe(recipe); }} style={{ fontSize:11, fontWeight:600, color:"#062846", lineHeight:1.3 }}>{recipe.title}</div>}
+                            {note && <div style={{ fontSize:10, fontStyle:"italic", color:"#888", lineHeight:1.3, marginTop:recipe?2:0 }}>{note}</div>}
+                          </div>
+                          <button onClick={e => remove(day,meal,e)} style={{ background:"none", border:"none", color:"#ccc", cursor:"pointer", fontSize:13, padding:0, lineHeight:1, marginLeft:3, flexShrink:0 }}>{"×"}</button>
+                        </div>
+                      ) : (
+                        <span style={{ fontSize:10, color:"#ccc" }}>+ add</span>
+                      )}
                     </div>
-                  ) : (
-                    <span style={{ fontSize:10, color:"#ccc" }}>+ add</span>
-                  )}
-                </div>
+                  );
+                })}
               </div>
             </div>
           );
         })}
+      </div>
+
+      <div style={{ marginTop:16 }}>
+        <label style={{ fontSize:11, fontWeight:700, color:"#888", letterSpacing:"0.05em", textTransform:"uppercase", display:"block", marginBottom:6 }}>Notes</label>
+        <textarea value={plan.notes || ""} onChange={e => setPlan(prev => ({ ...prev, notes: e.target.value }))}
+          placeholder="Grocery list, prep reminders, leftovers…" rows={4}
+          style={{ width:"100%", padding:"10px 13px", borderRadius:10, border:"1.5px solid #e5e5e5", fontSize:13, outline:"none", resize:"vertical", fontFamily:"'DM Sans',sans-serif", boxSizing:"border-box" }} />
       </div>
 
       {picker && (
@@ -347,8 +375,14 @@ function MealPlanner({ recipes, onSelectRecipe }) {
           <div onClick={e => e.stopPropagation()}
             style={{ background:"#fff", borderRadius:16, width:"100%", maxWidth:440, maxHeight:"70vh", display:"flex", flexDirection:"column", overflow:"hidden", boxShadow:"0 20px 60px rgba(0,0,0,0.2)" }}>
             <div style={{ padding:"18px 18px 12px", borderBottom:"1px solid #eee" }}>
-              <p style={{ margin:"0 0 10px", fontWeight:700, fontSize:14, color:"#062846" }}>{picker.day} · Dinner</p>
-              <input autoFocus type="text" placeholder="Search recipes…" value={search} onChange={e => setSearch(e.target.value)}
+              <p style={{ margin:"0 0 10px", fontWeight:700, fontSize:14, color:"#062846" }}>{picker.day} {"·"} {picker.meal}</p>
+              <div style={{ display:"flex", gap:8, marginBottom:10 }}>
+                <input autoFocus type="text" placeholder="Type a note (e.g. Mom's leftover noodles)" value={noteDraft} onChange={e => setNoteDraft(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") saveNote(); }}
+                  style={{ flex:1, padding:"8px 12px", borderRadius:8, border:"1.5px solid #ddd", fontSize:13, boxSizing:"border-box", outline:"none", fontFamily:"'DM Sans',sans-serif" }} />
+                <button onClick={saveNote} disabled={!noteDraft.trim()} style={{ padding:"8px 14px", borderRadius:8, border:"none", background:noteDraft.trim()?"#5938a2":"#eee", color:noteDraft.trim()?"#fff":"#bbb", fontWeight:700, fontSize:12, cursor:noteDraft.trim()?"pointer":"not-allowed", whiteSpace:"nowrap", fontFamily:"'DM Sans',sans-serif" }}>Save note</button>
+              </div>
+              <input type="text" placeholder="…or search recipes to pick one" value={search} onChange={e => setSearch(e.target.value)}
                 style={{ width:"100%", padding:"8px 12px", borderRadius:8, border:"1.5px solid #ddd", fontSize:13, boxSizing:"border-box", outline:"none", fontFamily:"'DM Sans',sans-serif" }} />
             </div>
             <div style={{ overflowY:"auto", flex:1 }}>
