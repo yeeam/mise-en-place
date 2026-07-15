@@ -204,52 +204,19 @@ function ImportFromUrl({ onImport }) {
     setStatus("loading");
     setErrorMsg("");
     try {
-      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-      const proxyRes = await fetch(proxyUrl);
-      if (!proxyRes.ok) throw new Error("Could not fetch that URL. Check the link and try again.");
-      const { contents: rawHtml } = await proxyRes.json();
-      if (!rawHtml) throw new Error("Page returned no content.");
-
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(rawHtml, "text/html");
-      ["script","style","nav","footer","header","aside","iframe","noscript"].forEach(tag =>
-        doc.querySelectorAll(tag).forEach(el => el.remove())
-      );
-      const recipeArea = doc.querySelector('[class*="recipe"]') || doc.querySelector('[id*="recipe"]') || doc.querySelector("article") || doc.querySelector("main") || doc.body;
-      const textContent = (recipeArea?.innerText || recipeArea?.textContent || "").replace(/\s+/g, " ").trim().slice(0, 6000);
-      if (textContent.length < 100) throw new Error("Couldn't extract text from that page. Try adding manually.");
-
-      const prompt = `Extract the recipe from this webpage text and return ONLY valid JSON with these exact fields. No markdown, no explanation, just the JSON object.
-
-Required fields:
-- title: string
-- ingredients: array of strings
-- instructions: array of strings (each step as one string)
-- cuisine: string (e.g. "American", "Italian", "Asian")
-- ease: one of "Easy", "Medium", "Hard"
-- tags: array of strings (cuisine + main protein + method, e.g. ["Italian","Chicken","Weeknight"])
-- servings: string (e.g. "4")
-- time: string (e.g. "45 min")
-- notes: string (tips or storage info, empty string if none)
-
-Webpage text:
-${textContent}`;
-
-      const apiRes = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role:"user", content:prompt }] })
-      });
-      const apiData = await apiRes.json();
-      if (!apiRes.ok || apiData.error) throw new Error(apiData.error?.message || "Import failed — try again.");
-
-      const rawText = apiData.content?.find(b => b.type === "text")?.text || "";
-      const cleanJson = rawText.replace(/```json|```/g, "").trim();
-      let parsed;
-      try { parsed = JSON.parse(cleanJson); }
-      catch { throw new Error("Could not parse the recipe. Try adding manually."); }
-
-      parsed.url = url;
+      const res = await fetch(`/api/parse-recipe?url=${encodeURIComponent(url.trim())}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Import failed \u2014 try again.");
+      const parsed = {
+        title: data.title || "",
+        ingredients: data.ingredients || [],
+        instructions: data.instructions || [],
+        cuisine: data.cuisine || "",
+        ease: "",
+        tags: data.tags || [],
+        notes: [data.servings && `Serves ${data.servings}`, data.time && `Time: ${data.time}`].filter(Boolean).join(" \u00b7 "),
+        url: url.trim(),
+      };
       setStatus("success");
       onImport(parsed);
       setUrl("");
@@ -537,42 +504,14 @@ export default function App() {
   const [manualNotes, setManualNotes] = useState("");
   const [manualUrl, setManualUrl] = useState("");
   const [manualSaving, setManualSaving] = useState(false);
-  const [manualFetching, setManualFetching] = useState(false);
-  const [fetchMsg, setFetchMsg] = useState(null); // { ok: bool, text: string }
-
-  async function fetchFromUrl() {
-    const u = manualUrl.trim();
-    if (!u || manualFetching) return;
-    setManualFetching(true);
-    setFetchMsg(null);
-    try {
-      const res = await fetch(`/api/parse-recipe?url=${encodeURIComponent(u)}`);
-      const data = await res.json();
-      if (!res.ok) {
-        setFetchMsg({ ok: false, text: data.error || "Couldn't parse that page." });
-        return;
-      }
-      if (data.title) setManualTitle(data.title);
-      if (data.ingredients && data.ingredients.length) setManualIngredients(data.ingredients.join("\n"));
-      if (data.instructions && data.instructions.length) setManualInstructions(data.instructions.join("\n"));
-      if (data.tags && data.tags.length) setManualTags(data.tags.join(", "));
-      if (data.cuisine) setManualCuisine(data.cuisine);
-      const extra = [data.servings && `Serves ${data.servings}`, data.time && `Time: ${data.time}`].filter(Boolean).join(" \u00b7 ");
-      if (extra) setManualNotes(prev => prev ? prev : extra);
-      setFetchMsg({ ok: true, text: "Imported \u2014 review the fields below, then save." });
-    } catch {
-      setFetchMsg({ ok: false, text: "Fetch failed. Check the link and try again." });
-    } finally {
-      setManualFetching(false);
-    }
-  }
 
   const [search, setSearch] = useState("");
   const [filterUser, setFilterUser] = useState("all");
   const [filterRecipeStatus, setFilterRecipeStatus] = useState("all");
-  const [listView, setListView] = useState(false);
+  const [listView, setListView] = useState(true);
   const [filterCuisine, setFilterCuisine] = useState("all");
   const [filterProtein, setFilterProtein] = useState("all");
+  const [filterTag, setFilterTag] = useState("all");
 
   const [editMode, setEditMode] = useState(false);
   const [editUrl, setEditUrl] = useState("");
@@ -775,16 +714,18 @@ export default function App() {
   const allCuisines = [...new Set(recipes.map(r => r.cuisine).filter(Boolean))].sort();
   const proteinKeywords = ["Chicken","Beef","Pork","Seafood","Vegetarian","Fish","Lamb","Turkey","Tofu"];
   const allProteins = [...new Set(recipes.flatMap(r => r.tags?.filter(t => proteinKeywords.some(p => t.includes(p))) || []))].sort();
+  const allTags = [...new Set(recipes.flatMap(r => r.tags || []))].filter(t => !allProteins.includes(t)).sort();
 
   function applyFilters(list) {
     return list.filter(r => {
       const matchCuisine = filterCuisine === "all" || r.cuisine === filterCuisine;
-      const matchProtein = filterProtein === "all" || r.tags?.some(t => proteinKeywords.some(p => t === p || t.includes(p)));
+      const matchProtein = filterProtein === "all" || (r.tags?.includes(filterProtein) ?? false);
+      const matchTag = filterTag === "all" || (r.tags?.includes(filterTag) ?? false);
       const matchUser = filterUser === "all" || r.addedBy === filterUser;
       const matchSearch = r.title?.toLowerCase().includes(search.toLowerCase()) || r.tags?.some(t => t.toLowerCase().includes(search.toLowerCase()));
       const hasRecipe = r.instructions && r.instructions.length > 0;
       const matchStatus = filterRecipeStatus === "all" || (filterRecipeStatus === "has" && hasRecipe) || (filterRecipeStatus === "needs" && !hasRecipe);
-      return matchCuisine && matchProtein && matchUser && matchSearch && matchStatus;
+      return matchCuisine && matchProtein && matchTag && matchUser && matchSearch && matchStatus;
     });
   }
 
@@ -951,6 +892,19 @@ export default function App() {
                   ))}
                 </div>
 
+                {/* Tag filter (dynamic — built from recipe tags) */}
+                {allTags.length > 0 && (
+                <div style={{ display:"flex", gap:6, marginBottom:12, flexWrap:"wrap", alignItems:"center" }}>
+                  <span style={{ fontSize:11, fontWeight:600, color:"#888", minWidth:60 }}>Tags:</span>
+                  {["all", ...allTags].map(t => (
+                    <button key={t} onClick={() => setFilterTag(t)}
+                      style={{ padding:"5px 12px", borderRadius:20, border:"none", cursor:"pointer", fontWeight:600, fontSize:11,
+                        background:filterTag===t?"#ffd200":"#f0f0f0", color:filterTag===t?"#062846":"#888", transition:"all 0.15s" }}>
+                      {t==="all"?"All":t}
+                    </button>
+                  ))}
+                </div>
+                )}
                 {/* Recipe status filter */}
                 <div style={{ display:"flex", gap:6, marginBottom:14, flexWrap:"wrap", alignItems:"center" }}>
                   <span style={{ fontSize:11, fontWeight:600, color:"#888", minWidth:60 }}>Recipe:</span>
@@ -1060,19 +1014,9 @@ export default function App() {
                       style={{ width:"100%", padding:"10px 13px", borderRadius:10, border:"1.5px solid #e5e5e5", fontSize:13, outline:"none" }} />
                   </div>
                   <div style={{ marginBottom:14 }}>
-                    <label style={{ fontSize:11, fontWeight:700, color:"#888", letterSpacing:0.5, display:"block", marginBottom:5 }}>SOURCE URL (optional) \u2014 paste a link, then Fetch</label>
-                    <div style={{ display:"flex", gap:8 }}>
-                      <input value={manualUrl} onChange={e => setManualUrl(e.target.value)} placeholder="https://..."
-                        onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); fetchFromUrl(); } }}
-                        style={{ flex:1, padding:"10px 13px", borderRadius:10, border:"1.5px solid #e5e5e5", fontSize:13, outline:"none" }} />
-                      <button onClick={fetchFromUrl} disabled={!manualUrl.trim() || manualFetching}
-                        style={{ flexShrink:0, padding:"10px 16px", borderRadius:10, border:"none", background:manualUrl.trim()?"#5938a2":"#eee", color:manualUrl.trim()?"#fff":"#bbb", fontWeight:700, fontSize:13, cursor:manualUrl.trim()&&!manualFetching?"pointer":"not-allowed", whiteSpace:"nowrap" }}>
-                        {manualFetching ? "Fetching\u2026" : "Fetch"}
-                      </button>
-                    </div>
-                    {fetchMsg && (
-                      <div style={{ marginTop:7, fontSize:12, color:fetchMsg.ok?"#23cca2":"#ff492c", fontWeight:600 }}>{fetchMsg.text}</div>
-                    )}
+                    <label style={{ fontSize:11, fontWeight:700, color:"#888", letterSpacing:0.5, display:"block", marginBottom:5 }}>SOURCE URL (optional)</label>
+                    <input value={manualUrl} onChange={e => setManualUrl(e.target.value)} placeholder="https://..."
+                      style={{ width:"100%", padding:"10px 13px", borderRadius:10, border:"1.5px solid #e5e5e5", fontSize:13, outline:"none" }} />
                   </div>
                   <div style={{ marginBottom:14 }}>
                     <label style={{ fontSize:11, fontWeight:700, color:"#888", letterSpacing:0.5, display:"block", marginBottom:5 }}>INGREDIENTS (one per line)</label>
@@ -1118,7 +1062,7 @@ export default function App() {
                       const parsed = { title:manualTitle.trim(), ingredients:manualIngredients.split("\n").map(s=>s.trim()).filter(Boolean), instructions:manualInstructions.split("\n").map(s=>s.trim()).filter(Boolean), tags:manualTags.split(",").map(s=>s.trim()).filter(Boolean), cuisine:manualCuisine.trim(), ease:manualEase };
                       const newRecipe = await addRecipeObj(parsed, manualUrl.trim());
                       if (manualNotes.trim() && newRecipe) await updateRecipe(newRecipe.id, { notes:manualNotes.trim() });
-                      setManualTitle(""); setManualIngredients(""); setManualInstructions(""); setManualTags(""); setManualCuisine(""); setManualEase(""); setManualNotes(""); setManualUrl(""); setFetchMsg(null);
+                      setManualTitle(""); setManualIngredients(""); setManualInstructions(""); setManualTags(""); setManualCuisine(""); setManualEase(""); setManualNotes(""); setManualUrl("");
                       setSelected(newRecipe); setView(views.DETAIL);
                     } catch(e) { console.error("Save error:", e); }
                     finally { setManualSaving(false); }
