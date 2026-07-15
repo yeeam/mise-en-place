@@ -537,6 +537,35 @@ export default function App() {
   const [manualNotes, setManualNotes] = useState("");
   const [manualUrl, setManualUrl] = useState("");
   const [manualSaving, setManualSaving] = useState(false);
+  const [manualFetching, setManualFetching] = useState(false);
+  const [fetchMsg, setFetchMsg] = useState(null); // { ok: bool, text: string }
+
+  async function fetchFromUrl() {
+    const u = manualUrl.trim();
+    if (!u || manualFetching) return;
+    setManualFetching(true);
+    setFetchMsg(null);
+    try {
+      const res = await fetch(`/api/parse-recipe?url=${encodeURIComponent(u)}`);
+      const data = await res.json();
+      if (!res.ok) {
+        setFetchMsg({ ok: false, text: data.error || "Couldn't parse that page." });
+        return;
+      }
+      if (data.title) setManualTitle(data.title);
+      if (data.ingredients && data.ingredients.length) setManualIngredients(data.ingredients.join("\n"));
+      if (data.instructions && data.instructions.length) setManualInstructions(data.instructions.join("\n"));
+      if (data.tags && data.tags.length) setManualTags(data.tags.join(", "));
+      if (data.cuisine) setManualCuisine(data.cuisine);
+      const extra = [data.servings && `Serves ${data.servings}`, data.time && `Time: ${data.time}`].filter(Boolean).join(" \u00b7 ");
+      if (extra) setManualNotes(prev => prev ? prev : extra);
+      setFetchMsg({ ok: true, text: "Imported \u2014 review the fields below, then save." });
+    } catch {
+      setFetchMsg({ ok: false, text: "Fetch failed. Check the link and try again." });
+    } finally {
+      setManualFetching(false);
+    }
+  }
 
   const [search, setSearch] = useState("");
   const [filterUser, setFilterUser] = useState("all");
@@ -1031,9 +1060,19 @@ export default function App() {
                       style={{ width:"100%", padding:"10px 13px", borderRadius:10, border:"1.5px solid #e5e5e5", fontSize:13, outline:"none" }} />
                   </div>
                   <div style={{ marginBottom:14 }}>
-                    <label style={{ fontSize:11, fontWeight:700, color:"#888", letterSpacing:0.5, display:"block", marginBottom:5 }}>SOURCE URL (optional)</label>
-                    <input value={manualUrl} onChange={e => setManualUrl(e.target.value)} placeholder="https://..."
-                      style={{ width:"100%", padding:"10px 13px", borderRadius:10, border:"1.5px solid #e5e5e5", fontSize:13, outline:"none" }} />
+                    <label style={{ fontSize:11, fontWeight:700, color:"#888", letterSpacing:0.5, display:"block", marginBottom:5 }}>SOURCE URL (optional) \u2014 paste a link, then Fetch</label>
+                    <div style={{ display:"flex", gap:8 }}>
+                      <input value={manualUrl} onChange={e => setManualUrl(e.target.value)} placeholder="https://..."
+                        onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); fetchFromUrl(); } }}
+                        style={{ flex:1, padding:"10px 13px", borderRadius:10, border:"1.5px solid #e5e5e5", fontSize:13, outline:"none" }} />
+                      <button onClick={fetchFromUrl} disabled={!manualUrl.trim() || manualFetching}
+                        style={{ flexShrink:0, padding:"10px 16px", borderRadius:10, border:"none", background:manualUrl.trim()?"#5938a2":"#eee", color:manualUrl.trim()?"#fff":"#bbb", fontWeight:700, fontSize:13, cursor:manualUrl.trim()&&!manualFetching?"pointer":"not-allowed", whiteSpace:"nowrap" }}>
+                        {manualFetching ? "Fetching\u2026" : "Fetch"}
+                      </button>
+                    </div>
+                    {fetchMsg && (
+                      <div style={{ marginTop:7, fontSize:12, color:fetchMsg.ok?"#23cca2":"#ff492c", fontWeight:600 }}>{fetchMsg.text}</div>
+                    )}
                   </div>
                   <div style={{ marginBottom:14 }}>
                     <label style={{ fontSize:11, fontWeight:700, color:"#888", letterSpacing:0.5, display:"block", marginBottom:5 }}>INGREDIENTS (one per line)</label>
@@ -1079,7 +1118,7 @@ export default function App() {
                       const parsed = { title:manualTitle.trim(), ingredients:manualIngredients.split("\n").map(s=>s.trim()).filter(Boolean), instructions:manualInstructions.split("\n").map(s=>s.trim()).filter(Boolean), tags:manualTags.split(",").map(s=>s.trim()).filter(Boolean), cuisine:manualCuisine.trim(), ease:manualEase };
                       const newRecipe = await addRecipeObj(parsed, manualUrl.trim());
                       if (manualNotes.trim() && newRecipe) await updateRecipe(newRecipe.id, { notes:manualNotes.trim() });
-                      setManualTitle(""); setManualIngredients(""); setManualInstructions(""); setManualTags(""); setManualCuisine(""); setManualEase(""); setManualNotes(""); setManualUrl("");
+                      setManualTitle(""); setManualIngredients(""); setManualInstructions(""); setManualTags(""); setManualCuisine(""); setManualEase(""); setManualNotes(""); setManualUrl(""); setFetchMsg(null);
                       setSelected(newRecipe); setView(views.DETAIL);
                     } catch(e) { console.error("Save error:", e); }
                     finally { setManualSaving(false); }
