@@ -858,11 +858,11 @@ export default function App() {
               </div>
               <nav style={{ display:"flex", gap:1, alignItems:"center" }}>
                 {[
+                  { label:"📅 Plan", v:views.PLAN },
                   { label:"Recipes", v:views.HOME },
                   { label:"Favs", v:views.FAVORITES },
                   { label:"+ Add", v:views.ADD },
                   { label:"📋 Log", v:views.LOG },
-                  { label:"📅 Plan", v:views.PLAN },
                 ].map(n => (
                   <button key={n.v} onClick={() => setView(n.v)} style={navBtn(view===n.v)}>{n.label}</button>
                 ))}
