@@ -271,14 +271,27 @@ function MealPlanner({ recipes, onSelectRecipe }) {
   useEffect(() => {
     const saved = localStorage.getItem(key);
     setPlan(saved ? JSON.parse(saved) : {});
+    if (!supabase) return;
+    let cancelled = false;
+    supabase.from("meal_plans").select("data").eq("key", key).maybeSingle()
+      .then(({ data, error }) => {
+        if (cancelled || error || !data) return;
+        const remote = data.data || {};
+        setPlan(remote);
+        localStorage.setItem(key, JSON.stringify(remote));
+      });
+    return () => { cancelled = true; };
   }, [key]);
-  useEffect(() => {
-    localStorage.setItem(key, JSON.stringify(plan));
-  }, [plan, key]);
+
+  const commit = (next) => {
+    setPlan(next);
+    localStorage.setItem(key, JSON.stringify(next));
+    if (supabase) supabase.from("meal_plans").upsert({ key, data: next }).then(() => {});
+  };
 
   const assign = (recipeId) => {
     if (!picker) return;
-    setPlan(prev => ({ ...prev, [`${picker.day}_${picker.meal}`]: recipeId }));
+    commit({ ...plan, [`${picker.day}_${picker.meal}`]: recipeId });
     setPicker(null);
     setSearch("");
     setNoteDraft("");
@@ -286,13 +299,15 @@ function MealPlanner({ recipes, onSelectRecipe }) {
   const saveNote = () => {
     if (!picker) return;
     const k = `${picker.day}_${picker.meal}_note`;
-    setPlan(prev => { const n = {...prev}; if (noteDraft.trim()) n[k] = noteDraft.trim(); else delete n[k]; return n; });
+    const n = { ...plan };
+    if (noteDraft.trim()) n[k] = noteDraft.trim(); else delete n[k];
+    commit(n);
     setPicker(null);
     setSearch("");
     setNoteDraft("");
   };
-  const remove = (day, meal, e) => { e.stopPropagation(); setPlan(prev => { const n = {...prev}; delete n[`${day}_${meal}`]; delete n[`${day}_${meal}_note`]; return n; }); };
-  const clearMeals = () => setPlan(prev => ({ notes: prev.notes || "" }));
+  const remove = (day, meal, e) => { e.stopPropagation(); const n = { ...plan }; delete n[`${day}_${meal}`]; delete n[`${day}_${meal}_note`]; commit(n); };
+  const clearMeals = () => commit({ notes: plan.notes || "" });
   const getR = id => recipes.find(r => r.id === id);
 
   const weekEnd = new Date(weekStart); weekEnd.setDate(weekEnd.getDate() + 6);
@@ -364,7 +379,7 @@ function MealPlanner({ recipes, onSelectRecipe }) {
 
       <div style={{ marginTop:16 }}>
         <label style={{ fontSize:11, fontWeight:700, color:"#888", letterSpacing:"0.05em", textTransform:"uppercase", display:"block", marginBottom:6 }}>Notes</label>
-        <textarea value={plan.notes || ""} onChange={e => setPlan(prev => ({ ...prev, notes: e.target.value }))}
+        <textarea value={plan.notes || ""} onChange={e => setPlan(prev => ({ ...prev, notes: e.target.value }))} onBlur={() => commit(plan)}
           placeholder="Grocery list, prep reminders, leftovers…" rows={4}
           style={{ width:"100%", padding:"10px 13px", borderRadius:10, border:"1.5px solid #e5e5e5", fontSize:13, outline:"none", resize:"vertical", fontFamily:"'DM Sans',sans-serif", boxSizing:"border-box" }} />
       </div>
@@ -546,6 +561,8 @@ export default function App() {
   const [filterCuisine, setFilterCuisine] = useState("all");
   const [filterProtein, setFilterProtein] = useState("all");
   const [filterTag, setFilterTag] = useState("all");
+  const [showFilters, setShowFilters] = useState(false);
+  const activeFilterCount = [filterUser, filterCuisine, filterProtein, filterTag, filterRecipeStatus].filter(v => v && v !== "all").length;
 
   const [editMode, setEditMode] = useState(false);
   const [editUrl, setEditUrl] = useState("");
@@ -886,10 +903,15 @@ export default function App() {
                   <button onClick={() => setListView(!listView)}
                     style={{ padding:"10px 12px", borderRadius:10, border:"1.5px solid #e5e5e5", background:listView?"#062846":"#fff", color:listView?"#fff":"#888", cursor:"pointer", fontSize:14, fontWeight:600 }}
                     title={listView?"Grid view":"List view"}>{listView?"≡":"▦"}</button>
+                  <button onClick={() => setShowFilters(v => !v)} title="Show/hide filters"
+                    style={{ padding:"10px 12px", borderRadius:10, border:"1.5px solid #e5e5e5", background:showFilters?"#062846":"#fff", color:showFilters?"#fff":"#888", cursor:"pointer", fontSize:12, fontWeight:600, whiteSpace:"nowrap" }}>
+                    {activeFilterCount > 0 ? `Filters (${activeFilterCount})` : "Filters"}
+                  </button>
                   <button onClick={exportRecipesToDoc} title="Export to Word"
                     style={{ padding:"10px 12px", borderRadius:10, border:"1.5px solid #e5e5e5", background:"#fff", color:"#888", cursor:"pointer", fontSize:12, fontWeight:600 }}>Export</button>
                 </div>
 
+                {showFilters && (<>
                 {/* Member filter */}
                 <div style={{ display:"flex", gap:6, marginBottom:12, flexWrap:"wrap" }}>
                   {["all", ...allMembers].map(m => (
@@ -951,6 +973,7 @@ export default function App() {
                     </button>
                   ))}
                 </div>
+                </>)}
 
                 {/* Feature 6: Sort bar */}
                 <SortBar sortBy={sortBy} onChange={setSortBy} />
