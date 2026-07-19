@@ -569,6 +569,10 @@ export default function App() {
   const [editIngredients, setEditIngredients] = useState("");
   const [editInstructions, setEditInstructions] = useState("");
   const [editNotes, setEditNotes] = useState("");
+  const [editTitle, setEditTitle] = useState("");
+  const [editTags, setEditTags] = useState("");
+  const [editRefreshing, setEditRefreshing] = useState(false);
+  const [editRefreshMsg, setEditRefreshMsg] = useState(null);
 
   const [shareLoading, setShareLoading] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
@@ -588,21 +592,45 @@ export default function App() {
 
   function startEditing(recipe) {
     setEditMode(true);
+    setEditTitle(recipe.title || "");
+    setEditTags((recipe.tags || []).join(", "));
     setEditUrl(recipe.url || "");
     setEditIngredients((recipe.ingredients || []).join("\n"));
     setEditInstructions((recipe.instructions || []).join("\n"));
     setEditNotes(recipe.notes || "");
+    setEditRefreshMsg(null);
   }
 
   async function saveEdits() {
     const updates = {
+      title: editTitle.trim() || selected.title,
       url: editUrl.trim(),
       ingredients: editIngredients.split("\n").map(s => s.trim()).filter(Boolean),
       instructions: editInstructions.split("\n").map(s => s.trim()).filter(Boolean),
+      tags: editTags.split(",").map(s => s.trim()).filter(Boolean),
       notes: editNotes,
     };
     await updateRecipe(selected.id, updates);
     setEditMode(false);
+  }
+
+  async function refreshFromUrl() {
+    const u = editUrl.trim();
+    if (!u || editRefreshing) return;
+    setEditRefreshing(true);
+    setEditRefreshMsg(null);
+    try {
+      const res = await fetch(`/api/parse-recipe?url=${encodeURIComponent(u)}`);
+      const data = await res.json();
+      if (!res.ok) { setEditRefreshMsg({ ok: false, text: data.error || "Couldn't parse that page." }); return; }
+      if (data.ingredients && data.ingredients.length) setEditIngredients(data.ingredients.join("\n"));
+      if (data.instructions && data.instructions.length) setEditInstructions(data.instructions.join("\n"));
+      setEditRefreshMsg({ ok: true, text: "Ingredients & instructions refreshed — notes untouched. Save to keep." });
+    } catch {
+      setEditRefreshMsg({ ok: false, text: "Fetch failed. Check the link and try again." });
+    } finally {
+      setEditRefreshing(false);
+    }
   }
 
   function exportRecipesToDoc() {
@@ -1200,7 +1228,12 @@ export default function App() {
                   </div>
                   <div style={{ padding:"20px 20px 28px" }}>
                     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:10 }}>
-                      <div style={{ fontFamily:"'Playfair Display',serif", fontSize:20, fontWeight:900, color:"#062846", lineHeight:1.2 }}>{selected.title}</div>
+                      {editMode ? (
+                        <input value={editTitle} onChange={e => setEditTitle(e.target.value)} placeholder="Recipe name"
+                          style={{ flex:1, fontFamily:"'Playfair Display',serif", fontSize:20, fontWeight:900, color:"#062846", lineHeight:1.2, border:"1.5px solid #ddd", borderRadius:8, padding:"4px 8px", outline:"none", minWidth:0 }} />
+                      ) : (
+                        <div style={{ fontFamily:"'Playfair Display',serif", fontSize:20, fontWeight:900, color:"#062846", lineHeight:1.2 }}>{selected.title}</div>
+                      )}
                       <span onClick={() => toggleFav(selected.id)} style={{ fontSize:22, cursor:"pointer", color:selected.favorite?"#ff492c":"#ddd", flexShrink:0 }}>♥</span>
                     </div>
 
@@ -1238,11 +1271,17 @@ export default function App() {
                     {/* Feature 7: Cook history — replaces the old date-pill version */}
                     <CookHistory cookLog={selected.cookLog} />
 
-                    {selected.tags?.length > 0 && (
+                    {editMode ? (
+                      <div style={{ marginTop:14 }}>
+                        <div style={{ fontSize:10, fontWeight:700, color:"#aaa", marginBottom:4, textTransform:"uppercase", letterSpacing:0.5 }}>Tags (comma-separated)</div>
+                        <input value={editTags} onChange={e => setEditTags(e.target.value)} placeholder="e.g. Chicken, Instant Pot, Weeknight"
+                          style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:"1.5px solid #ddd", fontSize:12, boxSizing:"border-box" }} />
+                      </div>
+                    ) : selected.tags?.length > 0 ? (
                       <div style={{ display:"flex", flexWrap:"wrap", gap:5, marginTop:14 }}>
                         {selected.tags.map(t => <span key={t} style={{ background:"#f0f4ff", color:"#5938a2", borderRadius:20, padding:"2px 10px", fontSize:11, fontWeight:600 }}>{t}</span>)}
                       </div>
-                    )}
+                    ) : null}
 
                     <div style={{ marginTop:16, display:"flex", gap:8, alignItems:"center" }}>
                       {!editMode ? (
@@ -1261,8 +1300,16 @@ export default function App() {
                     {editMode ? (
                       <div style={{ marginTop:16 }}>
                         <div style={{ fontSize:10, fontWeight:700, color:"#aaa", marginBottom:4, textTransform:"uppercase", letterSpacing:0.5 }}>Source URL</div>
-                        <input value={editUrl} onChange={e => setEditUrl(e.target.value)} placeholder="Paste recipe URL..."
-                          style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:"1.5px solid #ddd", fontSize:12 }} />
+                        <div style={{ display:"flex", gap:8 }}>
+                          <input value={editUrl} onChange={e => setEditUrl(e.target.value)} placeholder="Paste recipe URL..."
+                            style={{ flex:1, padding:"8px 10px", borderRadius:8, border:"1.5px solid #ddd", fontSize:12, boxSizing:"border-box" }} />
+                          <button onClick={refreshFromUrl} disabled={!editUrl.trim() || editRefreshing}
+                            style={{ flexShrink:0, padding:"8px 12px", borderRadius:8, border:"none", background:editUrl.trim()?"#5938a2":"#eee", color:editUrl.trim()?"#fff":"#bbb", fontWeight:700, fontSize:11, cursor:editUrl.trim()&&!editRefreshing?"pointer":"not-allowed", whiteSpace:"nowrap" }}>
+                            {editRefreshing ? "Refreshing…" : "Refresh"}
+                          </button>
+                        </div>
+                        {editRefreshMsg && <div style={{ marginTop:6, fontSize:11, color:editRefreshMsg.ok?"#23cca2":"#ff492c", fontWeight:600 }}>{editRefreshMsg.text}</div>}
+                        <div style={{ fontSize:10, color:"#bbb", marginTop:5 }}>Refresh pulls fresh ingredients & instructions from the link. Your notes stay untouched.</div>
                       </div>
                     ) : selected.url ? (
                       <div style={{ marginTop:16 }}>
