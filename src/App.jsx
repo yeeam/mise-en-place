@@ -277,6 +277,7 @@ function MealPlanner({ recipes, onSelectRecipe }) {
   const [picker, setPicker] = useState(null); // { day, meal }
   const [search, setSearch] = useState("");
   const [noteDraft, setNoteDraft] = useState("");
+  const [moving, setMoving] = useState(null); // { day, meal } being moved
 
   const key = `mealplan_${weekStart.toISOString().slice(0,10)}`;
   useEffect(() => {
@@ -298,6 +299,20 @@ function MealPlanner({ recipes, onSelectRecipe }) {
     setPlan(next);
     localStorage.setItem(key, JSON.stringify(next));
     if (supabase) supabase.from("meal_plans").upsert({ key, data: next }).then(() => {});
+  };
+  const moveTo = (destDay, destMeal) => {
+    if (!moving) return;
+    const { day: sd, meal: sm } = moving;
+    if (sd === destDay && sm === destMeal) { setMoving(null); return; }
+    const n = { ...plan };
+    const sR = `${sd}_${sm}`, sN = `${sd}_${sm}_note`;
+    const dR = `${destDay}_${destMeal}`, dN = `${destDay}_${destMeal}_note`;
+    const setDel = (k, v) => { if (v === undefined || v === "") delete n[k]; else n[k] = v; };
+    const srcRecipe = n[sR], srcNote = n[sN], dstRecipe = n[dR], dstNote = n[dN];
+    setDel(dR, srcRecipe); setDel(dN, srcNote);
+    setDel(sR, dstRecipe); setDel(sN, dstNote);
+    commit(n);
+    setMoving(null);
   };
 
   const assign = (recipeId) => {
@@ -359,6 +374,13 @@ function MealPlanner({ recipes, onSelectRecipe }) {
         </div>
       </div>
 
+      {moving && (
+        <div onClick={() => setMoving(null)}
+          style={{ marginBottom:10, padding:"9px 13px", borderRadius:10, background:"#f4f0ff", border:"1.5px solid #5938a2", color:"#5938a2", fontSize:12, fontWeight:600, cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center", gap:8 }}>
+          <span>Moving "{getR(plan[`${moving.day}_${moving.meal}`])?.title || plan[`${moving.day}_${moving.meal}_note`] || "item"}" \u2014 tap a slot to drop it here.</span>
+          <span style={{ fontWeight:700 }}>Cancel</span>
+        </div>
+      )}
       <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"repeat(7,1fr)", gap:8 }}>
         {DAYS.map((day, i) => {
           const date = new Date(weekStart); date.setDate(date.getDate() + i);
@@ -374,20 +396,35 @@ function MealPlanner({ recipes, onSelectRecipe }) {
                   const recipe = getR(plan[`${day}_${meal}`]);
                   const note = plan[`${day}_${meal}_note`];
                   const filled = recipe || note;
+                  const isSource = moving && moving.day === day && moving.meal === meal;
+                  const isTarget = moving && !isSource;
                   return (
-                    <div key={meal} onClick={() => { setPicker({ day, meal }); setSearch(""); setNoteDraft(plan[`${day}_${meal}_note`] || ""); }}
-                      style={{ borderRadius:8, padding:"7px 8px", marginBottom:6, background:filled?"#f0fff8":"#fafafa", border:filled?"1.5px solid #23cca2":"1.5px dashed #ddd", cursor:"pointer", minHeight:52, display:"flex", flexDirection:"column", justifyContent:"space-between" }}>
+                    <div key={meal}
+                      draggable={!!filled}
+                      onDragStart={() => { if (filled) setMoving({ day, meal }); }}
+                      onDragOver={e => { if (moving) e.preventDefault(); }}
+                      onDrop={e => { e.preventDefault(); moveTo(day, meal); }}
+                      onClick={() => {
+                        if (moving) { moveTo(day, meal); return; }
+                        setPicker({ day, meal }); setSearch(""); setNoteDraft(plan[`${day}_${meal}_note`] || "");
+                      }}
+                      style={{ borderRadius:8, padding:"7px 8px", marginBottom:6, background:isSource?"#fff7e6":filled?"#f0fff8":"#fafafa", border:isTarget?"1.5px dashed #5938a2":filled?"1.5px solid #23cca2":"1.5px dashed #ddd", cursor:moving?"copy":"pointer", minHeight:52, display:"flex", flexDirection:"column", justifyContent:"space-between" }}>
                       <div style={{ fontSize:9, fontWeight:700, color:"#aaa", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:3 }}>{meal}</div>
                       {filled ? (
                         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:3 }}>
                           <div style={{ minWidth:0 }}>
-                            {recipe && <div onClick={e => { e.stopPropagation(); onSelectRecipe(recipe); }} style={{ fontSize:11, fontWeight:600, color:"#062846", lineHeight:1.3 }}>{recipe.title}</div>}
+                            {recipe && <div onClick={e => { if (moving) return; e.stopPropagation(); onSelectRecipe(recipe); }} style={{ fontSize:11, fontWeight:600, color:"#062846", lineHeight:1.3 }}>{recipe.title}</div>}
                             {note && <div style={{ fontSize:10, fontStyle:"italic", color:"#888", lineHeight:1.3, marginTop:recipe?2:0 }}>{note}</div>}
                           </div>
-                          <button onClick={e => remove(day,meal,e)} style={{ background:"none", border:"none", color:"#ccc", cursor:"pointer", fontSize:13, padding:0, lineHeight:1, marginLeft:3, flexShrink:0 }}>{"×"}</button>
+                          <div style={{ display:"flex", flexDirection:"column", gap:3, alignItems:"center", flexShrink:0, marginLeft:3 }}>
+                            <button onClick={e => { e.stopPropagation(); setMoving(isSource ? null : { day, meal }); }} title="Move to another slot"
+                              style={{ background:"none", border:"none", color:isSource?"#5938a2":"#bbb", cursor:"pointer", fontSize:12, padding:0, lineHeight:1 }}>{"\u21c5"}</button>
+                            <button onClick={e => remove(day,meal,e)} title="Remove"
+                              style={{ background:"none", border:"none", color:"#ccc", cursor:"pointer", fontSize:13, padding:0, lineHeight:1 }}>{"\u00d7"}</button>
+                          </div>
                         </div>
                       ) : (
-                        <span style={{ fontSize:10, color:"#ccc" }}>+ add</span>
+                        <span style={{ fontSize:10, color:moving?"#5938a2":"#ccc", fontWeight:moving?700:400 }}>{moving ? "drop here" : "+ add"}</span>
                       )}
                     </div>
                   );
