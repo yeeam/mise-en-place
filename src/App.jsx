@@ -105,6 +105,16 @@ function sortRecipes(arr, sortBy) {
 
 const views = { HOME:"home", DETAIL:"detail", ADD:"add", FAVORITES:"favorites", LOG:"log", SHARED:"shared", PLAN:"plan" };
 
+// ── Responsive helper ──
+function useIsMobile(bp = 640) {
+  const [m, setM] = useState(typeof window !== "undefined" ? window.innerWidth <= bp : false);
+  useEffect(() => {
+    const onR = () => setM(window.innerWidth <= bp);
+    window.addEventListener("resize", onR);
+    return () => window.removeEventListener("resize", onR);
+  }, [bp]);
+  return m;
+}
 // ── Sub-components ──
 
 function StarRating({ value, onChange }) {
@@ -261,6 +271,7 @@ function getWeekStart(date = new Date()) {
 }
 
 function MealPlanner({ recipes, onSelectRecipe }) {
+  const isMobile = useIsMobile();
   const [weekStart, setWeekStart] = useState(getWeekStart());
   const [plan, setPlan] = useState({});
   const [picker, setPicker] = useState(null); // { day, meal }
@@ -309,6 +320,16 @@ function MealPlanner({ recipes, onSelectRecipe }) {
   const remove = (day, meal, e) => { e.stopPropagation(); const n = { ...plan }; delete n[`${day}_${meal}`]; delete n[`${day}_${meal}_note`]; commit(n); };
   const clearMeals = () => commit({ notes: plan.notes || "" });
   const getR = id => recipes.find(r => r.id === id);
+  const plannedIds = [...new Set(DAYS.flatMap(d => MEALS.map(m => plan[`${d}_${m}`])).filter(Boolean))];
+  const plannedRecipes = plannedIds.map(getR).filter(Boolean);
+  const groceryItems = [...new Set(plannedRecipes.flatMap(r => (r.ingredients || []).map(x => x.trim())).filter(Boolean))];
+  const groceryChecked = plan._grocery || {};
+  const toggleGrocery = (item) => {
+    const g = { ...(plan._grocery || {}) };
+    if (g[item]) delete g[item]; else g[item] = true;
+    commit({ ...plan, _grocery: g });
+  };
+  const copyGrocery = () => { navigator.clipboard.writeText(groceryItems.join("\n")); };
 
   const weekEnd = new Date(weekStart); weekEnd.setDate(weekEnd.getDate() + 6);
   const fmtOpts = { month:"short", day:"numeric" };
@@ -338,7 +359,7 @@ function MealPlanner({ recipes, onSelectRecipe }) {
         </div>
       </div>
 
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:8 }}>
+      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"repeat(7,1fr)", gap:8 }}>
         {DAYS.map((day, i) => {
           const date = new Date(weekStart); date.setDate(date.getDate() + i);
           const isToday = today.toDateString() === date.toDateString();
@@ -383,6 +404,35 @@ function MealPlanner({ recipes, onSelectRecipe }) {
           placeholder="Grocery list, prep reminders, leftovers…" rows={4}
           style={{ width:"100%", padding:"10px 13px", borderRadius:10, border:"1.5px solid #e5e5e5", fontSize:13, outline:"none", resize:"vertical", fontFamily:"'DM Sans',sans-serif", boxSizing:"border-box" }} />
       </div>
+
+      {plannedRecipes.length > 0 && (
+        <div style={{ marginTop:16 }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
+            <label style={{ fontSize:11, fontWeight:700, color:"#888", letterSpacing:"0.05em", textTransform:"uppercase" }}>Grocery List</label>
+            <button onClick={copyGrocery}
+              style={{ padding:"4px 12px", borderRadius:8, border:"1.5px solid #e5e5e5", background:"#fff", color:"#5938a2", fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"'DM Sans',sans-serif" }}>Copy</button>
+          </div>
+          <div style={{ fontSize:11, color:"#aaa", marginBottom:10, lineHeight:1.5 }}>
+            Combined from {plannedRecipes.length} recipe{plannedRecipes.length > 1 ? "s" : ""} this week ({plannedRecipes.map(r => r.title).join(", ")}). Amounts are rough \u2014 double-check before shopping.
+          </div>
+          <div style={{ background:"#fff", borderRadius:10, border:"1.5px solid #eee", padding:"6px 4px" }}>
+            {groceryItems.length === 0 ? (
+              <div style={{ fontSize:12, color:"#bbb", padding:"10px" }}>The recipes planned this week have no saved ingredients yet.</div>
+            ) : groceryItems.map(item => {
+              const done = !!groceryChecked[item];
+              return (
+                <div key={item} onClick={() => toggleGrocery(item)}
+                  style={{ display:"flex", alignItems:"center", gap:10, padding:"7px 10px", cursor:"pointer", borderRadius:8 }}
+                  onMouseEnter={e => e.currentTarget.style.background = "#fafafa"}
+                  onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                  <span style={{ width:16, height:16, borderRadius:4, border:done ? "none" : "1.5px solid #ccc", background:done ? "#23cca2" : "#fff", color:"#fff", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, flexShrink:0 }}>{done ? "\u2713" : ""}</span>
+                  <span style={{ fontSize:13, color:done ? "#bbb" : "#444", textDecoration:done ? "line-through" : "none", lineHeight:1.4 }}>{item}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {picker && (
         <div onClick={() => { setPicker(null); setSearch(""); }}
@@ -529,6 +579,7 @@ function CookHistory({ cookLog }) {
 
 // ── Main App ──
 export default function App() {
+  const isMobile = useIsMobile();
   const [recipes, setRecipes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState(views.HOME);
@@ -818,7 +869,7 @@ export default function App() {
 
   const navBtn = (active) => ({
     background:"none", border:"none", cursor:"pointer", fontFamily:"'DM Sans',sans-serif", fontWeight:active?700:500,
-    fontSize:12, color:active?"#ff492c":"#aab4c4", padding:"6px 8px", borderRadius:8,
+    fontSize:isMobile?11:12, color:active?"#ff492c":"#aab4c4", padding:isMobile?"6px 5px":"6px 8px", borderRadius:8, whiteSpace:"nowrap",
     borderBottom:active?"2px solid #ff492c":"2px solid transparent", transition:"color 0.15s"
   });
 
@@ -897,11 +948,11 @@ export default function App() {
         <>
           {/* Header */}
           <div style={{ background:"#062846", padding:"0 16px", position:"sticky", top:0, zIndex:100, boxShadow:"0 2px 12px rgba(0,0,0,0.18)" }}>
-            <div style={{ maxWidth:720, margin:"0 auto", display:"flex", alignItems:"center", justifyContent:"space-between", height:52 }}>
-              <div style={{ fontFamily:"'Playfair Display',serif", fontSize:19, fontWeight:900, color:"#fff", letterSpacing:-0.5 }}>
+            <div style={{ maxWidth:720, margin:"0 auto", display:"flex", alignItems:"center", justifyContent:"space-between", minHeight:52, flexWrap:isMobile?"wrap":"nowrap", gap:8, padding:isMobile?"8px 0":0 }}>
+              <div style={{ fontFamily:"'Playfair Display',serif", fontSize:isMobile?16:19, fontWeight:900, color:"#fff", letterSpacing:-0.5 }}>
                 mise <span style={{color:"#ff492c"}}>en place</span>
               </div>
-              <nav style={{ display:"flex", gap:1, alignItems:"center" }}>
+              <nav style={{ display:"flex", gap:1, alignItems:"center", flexWrap:"wrap", justifyContent:"flex-end" }}>
                 {[
                   { label:"📅 Plan", v:views.PLAN },
                   { label:"Recipes", v:views.HOME },
@@ -925,7 +976,7 @@ export default function App() {
             {/* ── HOME ── */}
             {view===views.HOME && (
               <div>
-                <div style={{ display:"flex", gap:8, marginBottom:16, alignItems:"center" }}>
+                <div style={{ display:"flex", gap:8, marginBottom:16, alignItems:"center", flexWrap:"wrap" }}>
                   <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search recipes or tags…"
                     style={{ flex:1, padding:"10px 14px", borderRadius:12, border:"1.5px solid #e5e5e5", fontSize:13, background:"#fff", outline:"none" }} />
                   <button onClick={() => setListView(!listView)}
@@ -1022,7 +1073,7 @@ export default function App() {
                           onMouseLeave={e => e.currentTarget.style.transform=""}>
                           <div style={{ flex:1, display:"flex", alignItems:"center", gap:10 }}>
                             <span style={{ width:8, height:8, borderRadius:"50%", background:hasInstructions?"#23cca2":"#ddd", flexShrink:0 }}/>
-                            <div style={{ fontWeight:700, color:"#062846", fontSize:13, fontFamily:"'Playfair Display',serif", minWidth:180 }}>{r.title}</div>
+                            <div style={{ fontWeight:700, color:"#062846", fontSize:13, fontFamily:"'Playfair Display',serif", minWidth:isMobile?0:180 }}>{r.title}</div>
                             {r.cuisine && <span style={{ fontSize:10, color:"#fff", background:"#5938a2", borderRadius:12, padding:"3px 8px", fontWeight:600, flexShrink:0 }}>{r.cuisine}</span>}
                             {r.url && <a href={r.url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ fontSize:10, color:"#5938a2", textDecoration:"none", fontWeight:600, flexShrink:0 }}>source</a>}
                           </div>
@@ -1035,7 +1086,7 @@ export default function App() {
                     })}
                   </div>
                 ) : (
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12 }}>
+                  <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr 1fr":"1fr 1fr 1fr", gap:12 }}>
                     {filtered.map(r => <RecipeCard key={r.id} recipe={r} onClick={() => { setSelected(r); setView(views.DETAIL); }} onFav={toggleFav} />)}
                   </div>
                 )}
@@ -1045,7 +1096,7 @@ export default function App() {
             {/* ── FAVORITES ── */}
             {view===views.FAVORITES && (
               <div>
-                <div style={{ display:"flex", gap:8, marginBottom:16, alignItems:"center" }}>
+                <div style={{ display:"flex", gap:8, marginBottom:16, alignItems:"center", flexWrap:"wrap" }}>
                   <div style={{ fontFamily:"'Playfair Display',serif", fontSize:22, fontWeight:900, color:"#062846", flex:1 }}>Favorites</div>
                   <button onClick={() => setListView(!listView)}
                     style={{ padding:"10px 12px", borderRadius:10, border:"1.5px solid #e5e5e5", background:listView?"#062846":"#fff", color:listView?"#fff":"#888", cursor:"pointer", fontSize:14, fontWeight:600 }}>{listView?"≡":"▦"}</button>
@@ -1078,7 +1129,7 @@ export default function App() {
                       ))}
                     </div>
                   ) : (
-                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12 }}>
+                    <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr 1fr":"1fr 1fr 1fr", gap:12 }}>
                       {favs.map(r => <RecipeCard key={r.id} recipe={r} onClick={() => { setSelected(r); setView(views.DETAIL); }} onFav={toggleFav} />)}
                     </div>
                   )
